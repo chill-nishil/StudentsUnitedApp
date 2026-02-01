@@ -1,98 +1,138 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { auth, db } from "@/FirebaseConfig";
+import { router } from "expo-router";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+export default function SignInScreen() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
-export default function HomeScreen() {
+  const handleSignIn = async () => {
+    if (!email || !password) {
+      alert("Enter email and password");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const cred = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+
+      const q = query(
+        collection(db, "users"),
+        where("uid", "==", cred.user.uid)
+      );
+
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        alert("User profile not found");
+        setLoading(false);
+        return;
+      }
+
+      router.push(`/chat?uid=${cred.user.uid}`);
+    } catch (e) {
+      alert("Invalid email or password");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <View style={styles.container}>
+      <Text style={styles.logo}>STUDENTS UNITED</Text>
+      <Text style={styles.subtitle}>Stronger Together</Text>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      <View style={styles.card}>
+        <TextInput
+          placeholder="Email"
+          placeholderTextColor="#4B5563"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          style={styles.input}
+        />
+
+        <TextInput
+          placeholder="Password"
+          placeholderTextColor="#4B5563"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          style={styles.input}
+        />
+
+        <Pressable
+          style={[styles.button, loading && styles.disabled]}
+          onPress={handleSignIn}
+          disabled={loading}
+        >
+          <Text style={styles.buttonText}>
+            {loading ? "Signing in..." : "Sign In"}
+          </Text>
+        </Pressable>
+
+        <Pressable onPress={() => router.push("/create-account")}>
+          <Text style={styles.linkText}>New here? Create account</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  container: {
+    flex: 1,
+    backgroundColor: "#dbeafe",
+    justifyContent: "center",
+    padding: 24
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  logo: {
+    fontSize: 28,
+    textAlign: "center",
+    fontWeight: "700",
+    marginBottom: 4
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  subtitle: {
+    textAlign: "center",
+    marginBottom: 32
   },
+  card: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 20
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12
+  },
+  button: {
+    backgroundColor: "#222",
+    padding: 14,
+    borderRadius: 8,
+    marginTop: 8
+  },
+  disabled: {
+    opacity: 0.6
+  },
+  buttonText: {
+    color: "white",
+    textAlign: "center",
+    fontWeight: "600"
+  },
+  linkText: {
+    marginTop: 12,
+    textAlign: "center"
+  }
 });
