@@ -5,12 +5,23 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
+import { useFonts } from "expo-font";
+
+
 export const unstable_settings = {
   anchor: '(tabs)',
 };
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  const [fontsLoaded] = useFonts({
+  "Roboto": require("../assets/fonts/RobotoFont.ttf") 
+  }); 
+
+if (!fontsLoaded) {
+  return null;
+}
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

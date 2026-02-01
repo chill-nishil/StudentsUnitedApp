@@ -5,15 +5,16 @@ import { createUserWithEmailAndPassword } from "firebase/auth";
 import { addDoc, collection } from "firebase/firestore";
 import { useState } from "react";
 import {
-    Keyboard,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableWithoutFeedback,
-    View
+  Image, Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableWithoutFeedback,
+  View
 } from "react-native";
 
 export default function CreateAccountScreen() {
@@ -56,7 +57,7 @@ export default function CreateAccountScreen() {
         clubName: isPresident ? clubName : null
       });
 
-      router.push(`/chat?uid=${cred.user.uid}`);
+      router.push(`/chat-room?uid=${cred.user.uid}`);
     } catch (e: any) {
       alert(e.message);
     } finally {
@@ -69,9 +70,19 @@ export default function CreateAccountScreen() {
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={80}
-    >
+    > 
+      
+
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <View style={styles.container}>
+       <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+       >
+          <Image
+            source={require("../assets/images/logo.png")}
+            style={styles.logo}
+          />
+
           <Text style={styles.title}>Create Account</Text>
 
           <TextInput
@@ -137,7 +148,7 @@ export default function CreateAccountScreen() {
               {loading ? "Creating account..." : "Create Account"}
             </Text>
           </Pressable>
-        </View>
+        </ScrollView>
       </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
@@ -145,13 +156,16 @@ export default function CreateAccountScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    justifyContent: "center",
+    flexGrow: 1,
+    // justifyContent: "center",
     padding: 24,
     backgroundColor: "#dbeafe"
   },
   title: {
-    fontSize: 24,
+    fontFamily: "System",
+    fontWeight: "600",
+    color: "#315680",
+    fontSize: 20,
     textAlign: "center",
     marginBottom: 24
   },
@@ -190,5 +204,11 @@ const styles = StyleSheet.create({
     color: "white",
     textAlign: "center",
     fontWeight: "600"
-  }
+  },
+  logo: {
+  width: 300,
+  height: 280,
+  alignSelf: "center",
+  resizeMode: "contain"
+}
 });

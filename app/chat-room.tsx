@@ -1,5 +1,5 @@
 import { db } from "@/FirebaseConfig";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import {
   addDoc,
   collection,
@@ -116,6 +116,10 @@ export default function ChatScreen() {
           <Text style={styles.userHeader}>
             {userName} · {position}
           </Text>
+
+          <Pressable onPress={() => router.push("/calendar")}>
+          <Text>Open Calendar</Text>
+        </Pressable>
 
           <FlatList
             data={messages}
