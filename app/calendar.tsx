@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { Calendar } from "react-native-calendars";
 
 type Event = {
   id: string;
@@ -13,6 +14,7 @@ type Event = {
 
 export default function CalendarScreen() {
   const [events, setEvents] = useState<Event[]>([]);
+  const [selectedDate, setSelectedDate] = useState("");
 
   useEffect(() => {
     const q = query(
@@ -36,18 +38,75 @@ export default function CalendarScreen() {
     return unsub;
   }, []);
 
+  const markedDates: any = {};
+
+events.forEach(event => {
+  const dateStr = event.date
+    ?.toDate()
+    .toISOString()
+    .split("T")[0];
+
+  if (!dateStr) return;
+
+  markedDates[dateStr] = {
+    marked: true,
+    dotColor: "#2563EB"
+  };
+
+});
+
+const filteredEvents = selectedDate
+? events.filter(event => {
+const dateStr = event.date
+?.toDate()
+.toISOString()
+.split("T")[0];
+return dateStr === selectedDate;
+})
+: events;
+
+
+if (selectedDate) {
+  markedDates[selectedDate] = {
+    ...(markedDates[selectedDate] || {}),
+    selected: true,
+    selectedColor: "#2563EB"
+  };
+}
+
+
   return (
+
     <View style={styles.container}>
       <Text style={styles.header}>January 2026</Text>
 
+      <Calendar
+        markedDates={markedDates}
+  
+        onDayPress={day => {
+        setSelectedDate(prev =>
+        prev === day.dateString ? "" : day.dateString
+        );
+        }}
+      />
+      
+    <View style={styles.listHeader}>
+      <Text style={styles.subHeader}>
+        {selectedDate
+          ? "Events on " + selectedDate
+          : "All Events"}
+      </Text>
+
       <Pressable
         style={styles.addButton}
-        onPress={() => router.push("/add-event")}>
-            <Text>Add Event</Text>
-    </Pressable>
+        onPress={() => router.push("/add-event")}
+      >
+        <Text style={styles.addButtonText}>Add Event</Text>
+      </Pressable>
+    </View>
 
       <FlatList
-        data={events}
+        data={filteredEvents}
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
           <View style={styles.eventCard}>
@@ -96,14 +155,26 @@ const styles = StyleSheet.create({
     color: "#374151"
   },
   addButton: {
-  backgroundColor: "#2563EB",
+  backgroundColor: "#7b97d4",
   padding: 12,
   borderRadius: 10,
   alignSelf: "flex-end",
+  marginTop: 12,
   marginBottom: 12
 },
 addButtonText: {
   color: "white",
   fontWeight: "600"
+},
+listHeader: {
+flexDirection: "row",
+alignItems: "center",
+justifyContent: "space-between",
+marginVertical: 12
+},
+subHeader: {
+fontSize: 16,
+fontWeight: "600",
+color: "#111827"
 }
 });

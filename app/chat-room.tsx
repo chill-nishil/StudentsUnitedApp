@@ -117,9 +117,12 @@ export default function ChatScreen() {
             {userName} · {position}
           </Text>
 
-          <Pressable onPress={() => router.push("/calendar")}>
-          <Text>Open Calendar</Text>
-        </Pressable>
+          <Pressable
+              style={styles.openCalendarButton}
+              onPress={() => router.push("/calendar")}
+              >
+            <Text style={styles.openCalendarText}>Add Event</Text>
+          </Pressable>
 
           <FlatList
             data={messages}
@@ -206,5 +209,18 @@ const styles = StyleSheet.create({
   sendText: {
     color: "white",
     fontWeight: "600"
-  }
+  },
+  openCalendarButton: {
+backgroundColor: "#7b97d4",
+paddingVertical: 12,
+paddingHorizontal: 18,
+borderRadius: 12,
+alignSelf: "center",
+marginTop: 16
+},
+openCalendarText: {
+color: "white",
+fontSize: 16,
+fontWeight: "600"
+}
 });
