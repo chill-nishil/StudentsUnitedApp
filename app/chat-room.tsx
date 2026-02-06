@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginTop: 10,
     alignItems: "center"
-  },
+  }, 
   input: {
     flex: 1,
     height: 48,
