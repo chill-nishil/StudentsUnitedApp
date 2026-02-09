@@ -89,6 +89,12 @@ export default function ChatScreen() {
         setUserName(data.name);
         setPosition(data.position);
         setClubName(data.clubName || "Club Chat");
+
+        if (!data.clubId) {
+          router.replace(`/join-club?uid=${uid}`);
+          return;
+        }
+
         setUserClubId(data.clubId);
       }
     }
