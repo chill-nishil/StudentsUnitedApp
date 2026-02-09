@@ -47,22 +47,35 @@ export default function ChatScreen() {
   const [userName, setUserName] = useState("");
   const [position, setPosition] = useState("");
   const [clubName, setClubName] = useState("");
+  const [userClubId, setUserClubId] = useState<string | null>(null);
+
 
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [emojiInput, setEmojiInput] = useState("");
   const emojiInputRef = useRef<TextInput>(null);
+  const [expandedReactions, setExpandedReactions] = useState<
+  Record<string, string[]>
+  >({});
+  const cancelEmojiReaction = () => {
+  emojiInputRef.current?.blur();
+  Keyboard.dismiss();
+  setShowEmojiPicker(false);
+  setActiveMessageId(null);
+  setEmojiInput("");
+};
 
   useEffect(() => {
-  const hideSub = Keyboard.addListener("keyboardDidHide", () => {
-    setShowEmojiPicker(false);
-    setActiveMessageId(null);
+  const sub = Keyboard.addListener("keyboardDidHide", () => {
+    if (showEmojiPicker) {
+      setShowEmojiPicker(false);
+      setActiveMessageId(null);
+      setEmojiInput("");
+    }
   });
 
-  return () => {
-    hideSub.remove();
-  };
-}, []);
+  return () => sub.remove();
+}, [showEmojiPicker]);
 
   useEffect(() => {
     if (!uid) return;
@@ -76,6 +89,7 @@ export default function ChatScreen() {
         setUserName(data.name);
         setPosition(data.position);
         setClubName(data.clubName || "Club Chat");
+        setUserClubId(data.clubId);
       }
     }
 
@@ -83,8 +97,10 @@ export default function ChatScreen() {
   }, [uid]);
 
   useEffect(() => {
+    if (!userClubId) return;
     const q = query(
       collection(db, "chats"),
+      where("clubId", "==", userClubId),
       orderBy("createdAt", "asc")
     );
 
@@ -104,18 +120,19 @@ export default function ChatScreen() {
     });
 
     return unsub;
-  }, []);
+  }, [userClubId]);
 
   async function sendMessage() {
-    if (!input.trim() || !userName) return;
+  if (!input.trim() || !userName || !userClubId) return;
 
-    await addDoc(collection(db, "chats"), {
-      message: input,
-      senderName: userName,
-      position: position,
-      createdAt: serverTimestamp(),
-      reactions: {}
-    });
+  await addDoc(collection(db, "chats"), {
+  message: input,
+  senderName: userName,
+  position: position,
+  clubId: userClubId,
+  createdAt: serverTimestamp(),
+  reactions: {}
+});
 
     setInput("");
   }
@@ -149,8 +166,10 @@ export default function ChatScreen() {
   setShowEmojiPicker(false);
   setActiveMessageId(null);
 }
-const isSingleEmoji = (text: string) => {
-  return /^(?:\p{Extended_Pictographic})$/u.test(text);
+const EMOJI_REGEX = /^\p{Extended_Pictographic}$/u;
+
+const isSingleEmoji = (text: string): boolean => {
+  return EMOJI_REGEX.test(text);
 };
 
 
@@ -161,6 +180,7 @@ const isSingleEmoji = (text: string) => {
       keyboardVerticalOffset={80}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+
         <View style={styles.container}>
           {/* CLUB NAME HEADER */}
           <Text style={styles.clubHeader}>
@@ -183,56 +203,130 @@ const isSingleEmoji = (text: string) => {
             data={messages}
             keyExtractor={item => item.id}
             contentContainerStyle={{ paddingBottom: 16 }}
-            renderItem={({ item }) => (
-            <View>
-              <View style={styles.message}>
-                <Text style={styles.sender}>
-                  {item.senderName} · {item.position}
-                </Text>
-                <Text>{item.message}</Text>
-              </View>
 
-              <Pressable
-                style={styles.reactButton}
-                onPress={() => {
-                  setActiveMessageId(item.id);
-                  setShowEmojiPicker(true);
-                  setTimeout(() => {
-                    emojiInputRef.current?.focus();
-                  }, 50);
-                }}
+            renderItem={({ item }) => {
+            const isMine = item.senderName === userName;
+            const myReactionEmoji = item.reactions &&
+              Object.entries(item.reactions).find(([_, users]) => users.includes(userName))?.[0];
+
+            return (
+              <View
+                style={[
+                  styles.messageGroup,
+                  isMine ? styles.alignRight : styles.alignLeft
+                ]}
               >
-                <Text style={styles.reactText}>
-                  {showEmojiPicker && activeMessageId === item.id
-                    ? "😊 Select an emoji from keyboard"
-                    : "😊 React"}
-                </Text>
-              </Pressable>
+                <View
+                  style={[
+                    styles.message,
+                    isMine ? styles.myMessage : styles.otherMessage
+                  ]}
+                >
+                  <Text style={styles.sender}>
+                    {item.senderName} · {item.position}
+                  </Text>
+                  <Text
+                    style={isMine ? styles.myMessageText : styles.otherMessageText}
+                  >
+                    {item.message}
+                  </Text>
+                </View>
+
+                <Pressable
+                  style={styles.reactButton}
+                  onPress={() => {
+                    setActiveMessageId(item.id);
+                    setShowEmojiPicker(true);
+                    setTimeout(() => {
+                      emojiInputRef.current?.focus();
+                    }, 50);
+                  }}
+                >
+                  <Text style={styles.reactText}>
+                    {showEmojiPicker && activeMessageId === item.id
+                      ? "Select an emoji from keyboard"
+                      : "😊 React"}
+                  </Text>
+                </Pressable>
 
               {item.reactions &&
                 Object.entries(item.reactions)
                   .filter(([_, users]) => users.length > 0)
-                  .map(([emoji, users]) => (
-                    <View key={emoji} style={styles.reactionRow}>
-                      <View style={styles.reactionBubble}>
-                        <Text>
-                          {emoji} {users.join(", ")}
-                        </Text>
+                  .map(([emoji, users]) => {
+                    const expandedForMessage = expandedReactions[item.id] || [];
+                    const isExpanded = expandedForMessage.includes(emoji);
+
+                    const myReactionEmoji =
+                      item.reactions &&
+                      Object.entries(item.reactions).find(([_, u]) =>
+                        u.includes(userName)
+                      )?.[0];
+
+                    const hasReacted = myReactionEmoji === emoji;
+
+                    return (
+                    <View key={emoji} style={styles.reactionContainer}>
+                      <View style={styles.reactionTopRow}>
+                        <Pressable
+                          onPress={() => {
+                            setExpandedReactions(prev => {
+                              const next = { ...prev };
+                              const current = next[item.id] || [];
+
+                              if (current.includes(emoji)) {
+                                next[item.id] = current.filter(e => e !== emoji);
+                              } else {
+                                next[item.id] = [...current, emoji];
+                              }
+
+                              return next;
+                            });
+                          }}
+                        >
+                          <View
+                            style={[
+                              styles.reactionBubble,
+                              hasReacted && styles.reactionBubbleActive
+                            ]}
+                          >
+                            <Text>
+                              {emoji} {users.length}
+                            </Text>
+                          </View>
+                        </Pressable>
+
+                        {hasReacted && (
+                          <Pressable
+                            style={styles.removeReaction}
+                            onPress={() => handleReaction(item.id, emoji)}
+                          >
+                            <Text style={styles.removeReactionText}>×</Text>
+                          </Pressable>
+                        )}
                       </View>
 
-                      {users.includes(userName) && (
-                        <Pressable
-                          style={styles.removeReaction}
-                          onPress={() => handleReaction(item.id, emoji)}
-                        >
-                          <Text style={styles.removeReactionText}>×</Text>
-                        </Pressable>
+                      {isExpanded && (
+                        <View style={styles.reactionBottomRow}>
+                          <Text style={styles.reactionNames}>
+                            {users.join(", ")}
+                          </Text>
+
+                          {!hasReacted && (
+                            <Pressable
+                              style={styles.addReactionButton}
+                              onPress={() => handleReaction(item.id, emoji)}
+                            >
+                              <Text style={styles.addReactionText}>+</Text>
+                            </Pressable>
+                          )}
+                        </View>
                       )}
                     </View>
-                  ))}
+                  );
+
+                  })}
             </View>
-          )}
-          />
+          )}}/>
 
           {showEmojiPicker && (
             <TextInput
@@ -257,7 +351,8 @@ const isSingleEmoji = (text: string) => {
             <TextInput
               value={input}
               onChangeText={setInput}
-              placeholder="Type message"
+              placeholder="Type message here..."
+              placeholderTextColor="black"
               style={styles.input}
             />
             <Pressable style={styles.send} onPress={sendMessage}>
@@ -307,15 +402,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#6B7280"
   },
-  reactionBubble: {
-    backgroundColor: "#E5E7EB",
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginLeft: 6,
-    marginTop: 2,
-    alignSelf: "flex-start"
-  },
   emojiRow: {
     flexDirection: "row",
     justifyContent: "space-around",
@@ -340,11 +426,11 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
     marginRight: 8,
-    backgroundColor: "white"
+    backgroundColor: "white",
   },
   send: {
     height: 48,
-    backgroundColor: "#222",
+    backgroundColor: "#7b97d4",
     paddingHorizontal: 20,
     justifyContent: "center",
     borderRadius: 8
@@ -371,12 +457,6 @@ const styles = StyleSheet.create({
   borderTopWidth: 1,
   borderColor: "#E5E7EB"
   },
-  reactionRow: {
-  flexDirection: "row",
-  alignItems: "center",
-  marginLeft: 6,
-  marginTop: 2
-  },
   removeReaction: {
   marginLeft: 6,
   paddingHorizontal: 4
@@ -384,5 +464,68 @@ const styles = StyleSheet.create({
   removeReactionText: {
   fontSize: 14,
   color: "#6B7280"
-  }
+  },
+  myMessage: {
+  alignSelf: "flex-end",
+  backgroundColor: "#DBEAFE"
+  },
+  otherMessage: {
+    alignSelf: "flex-start",
+    backgroundColor: "#E5E5E5"
+  },
+  myMessageText: {
+    color: "#000"
+  },
+  otherMessageText: {
+    color: "#000"
+  },
+  messageGroup: {
+  maxWidth: "80%",
+  marginVertical: 6
+  },
+  alignRight: {
+    alignSelf: "flex-end",
+    alignItems: "flex-end"
+  },
+  alignLeft: {
+    alignSelf: "flex-start",
+    alignItems: "flex-start"
+  },
+  reactionNames: {
+  marginLeft: 6,
+  fontSize: 12,
+  color: "#374151"
+  },
+  addReactionButton: {
+    marginLeft: 6,
+    paddingHorizontal: 6
+  },
+  addReactionText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#6B7280"
+  },
+  reactionBubbleActive: {
+  backgroundColor: "#7b97d4"
+},
+reactionBubble: {
+  backgroundColor: "#E5E7EB",
+  borderRadius: 12,
+  paddingHorizontal: 8,
+  paddingVertical: 4
+},
+reactionContainer: {
+  marginLeft: 6,
+  marginTop: 2
+},
+reactionTopRow: {
+  flexDirection: "row",
+  alignItems: "center"
+},
+reactionBottomRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginTop: 2
+}
+
 });

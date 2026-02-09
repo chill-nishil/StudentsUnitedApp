@@ -2,10 +2,17 @@ import { auth, db } from "@/FirebaseConfig";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { addDoc, collection } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  doc,
+  setDoc,
+  updateDoc
+} from "firebase/firestore";
 import { useState } from "react";
 import {
-  Image, Keyboard,
+  Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -30,54 +37,83 @@ export default function CreateAccountScreen() {
     position.trim().toLowerCase() === "president";
 
   const handleCreateAccount = async () => {
-    if (!name || !email || !password || !position) {
-      alert("Please fill out all required fields");
-      return;
-    }
+  console.log("CREATE ACCOUNT START");
 
-    if (isPresident && !clubName) {
-      alert("Please enter your club name");
-      return;
-    }
+  if (!name || !email || !password || !position) {
+    alert("Please fill out all required fields");
+    return;
+  }
 
-    try {
-      setLoading(true);
+  if (isPresident && !clubName) {
+    alert("Please enter your club name");
+    return;
+  }
 
-      const cred = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
+  try {
+    setLoading(true);
 
-      await addDoc(collection(db, "users"), {
-        uid: cred.user.uid,
-        name,
-        email,
-        position,
-        clubName: isPresident ? clubName : null
+    console.log("CREATING AUTH USER");
+
+    const cred = await createUserWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
+
+    const uid = cred.user.uid;
+    console.log("AUTH USER CREATED:", uid);
+
+    console.log("CREATING USER DOC");
+
+    await setDoc(doc(db, "users", uid), {
+      uid,
+      name,
+      email,
+      position,
+      clubName: isPresident ? clubName : null
+    });
+
+    console.log("USER DOC CREATED");
+
+    if (isPresident) {
+      console.log("CREATING CLUB");
+
+      const clubRef = await addDoc(collection(db, "clubs"), {
+        name: clubName,
+        presidentUid: uid,
+        members: [uid]
       });
 
-      router.push(`/chat-room?uid=${cred.user.uid}`);
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setLoading(false);
+      console.log("CLUB CREATED:", clubRef.id);
+
+      await updateDoc(doc(db, "users", uid), {
+        clubId: clubRef.id
+      });
+
+      console.log("USER UPDATED WITH CLUB ID");
     }
-  };
+
+    router.push(`/chat-room?uid=${uid}`);
+  } catch (e: any) {
+    console.error("CREATE ACCOUNT ERROR:", e);
+    alert(e.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={80}
-    > 
-      
-
+    >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-       <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
-       >
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+        >
           <Image
             source={require("../assets/images/logo.png")}
             style={styles.logo}
@@ -102,7 +138,6 @@ export default function CreateAccountScreen() {
             style={styles.input}
           />
 
-          {/* PASSWORD WITH EYE TOGGLE */}
           <View style={styles.passwordContainer}>
             <TextInput
               placeholder="Create password"
@@ -157,12 +192,10 @@ export default function CreateAccountScreen() {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
-    // justifyContent: "center",
     padding: 24,
     backgroundColor: "#dbeafe"
   },
   title: {
-    fontFamily: "System",
     fontWeight: "600",
     color: "#315680",
     fontSize: 20,
@@ -206,9 +239,9 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   },
   logo: {
-  width: 300,
-  height: 280,
-  alignSelf: "center",
-  resizeMode: "contain"
-}
+    width: 300,
+    height: 280,
+    alignSelf: "center",
+    resizeMode: "contain"
+  }
 });
