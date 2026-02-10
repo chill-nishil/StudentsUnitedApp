@@ -19,6 +19,7 @@ import {
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -63,7 +64,12 @@ export default function ChatScreen() {
   setShowEmojiPicker(false);
   setActiveMessageId(null);
   setEmojiInput("");
+
 };
+
+  const [isPresident, setIsPresident] = useState(false);
+  const [showRequestsModal, setShowRequestsModal] = useState(false);
+  const [requestUsers, setRequestUsers] = useState<any[]>([]);
 
   useEffect(() => {
   const sub = Keyboard.addListener("keyboardDidHide", () => {
@@ -127,6 +133,62 @@ export default function ChatScreen() {
 
     return unsub;
   }, [userClubId]);
+
+  useEffect(() => {
+  if (!userClubId || !uid) return;
+
+  const clubRef = doc(db, "clubs", userClubId);
+
+  const unsub = onSnapshot(clubRef, async snap => {
+    if (!snap.exists()) return;
+
+    const data = snap.data();
+
+    setIsPresident(data.presidentId === uid);
+
+    if (data.joinRequests && data.joinRequests.length > 0) {
+      const usersSnap = await getDocs(
+        query(collection(db, "users"), where("uid", "in", data.joinRequests))
+      );
+
+      setRequestUsers(usersSnap.docs.map(d => d.data()));
+    } else {
+      setRequestUsers([]);
+    }
+  });
+
+  return unsub;
+}, [userClubId, uid]);
+
+async function acceptJoinRequest(requestUid: string) {
+  if (!userClubId) return;
+
+  const clubRef = doc(db, "clubs", userClubId);
+  const userRef = doc(db, "users", requestUid);
+
+  await updateDoc(clubRef, {
+    members: arrayUnion(requestUid),
+    joinRequests: arrayRemove(requestUid)
+  });
+
+  await updateDoc(userRef, {
+    clubId: userClubId,
+    clubName: clubName
+  });
+}
+
+
+
+async function rejectJoinRequest(requestUid: string) {
+  if (!userClubId) return;
+
+  const clubRef = doc(db, "clubs", userClubId);
+
+  await updateDoc(clubRef, {
+    joinRequests: arrayRemove(requestUid)
+  });
+}
+
 
   async function sendMessage() {
   if (!input.trim() || !userName || !userClubId) return;
@@ -198,12 +260,23 @@ const isSingleEmoji = (text: string): boolean => {
             {userName} · {position}
           </Text>
 
-          <Pressable
-            style={styles.openCalendarButton}
-            onPress={() => router.push("/calendar")}
-          >
-            <Text style={styles.openCalendarText}>Add Event</Text>
-          </Pressable>
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
+            <Pressable
+              style={styles.openCalendarButton}
+              onPress={() => router.push("/calendar")}
+            >
+              <Text style={styles.openCalendarText}>Add Event</Text>
+            </Pressable>
+
+            {isPresident && (
+              <Pressable
+                style={styles.openCalendarButton}
+                onPress={() => setShowRequestsModal(true)}
+              >
+                <Text style={styles.openCalendarText}>Join Requests</Text>
+              </Pressable>
+            )}
+          </View>
 
           <FlatList
             data={messages}
@@ -331,6 +404,51 @@ const isSingleEmoji = (text: string): boolean => {
                   );
 
                   })}
+
+                  <Modal visible={showRequestsModal} transparent animationType="slide">
+                    <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "center" }}>
+                      <View style={{ backgroundColor: "white", margin: 20, padding: 16, borderRadius: 12 }}>
+                        <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>
+                          Join Requests
+                        </Text>
+
+                        {requestUsers.length === 0 && (
+                          <Text>No pending join requests</Text>
+                        )}
+
+                        <FlatList
+                          data={requestUsers}
+                          keyExtractor={item => item.uid}
+                          renderItem={({ item }) => (
+                            <View style={{ marginBottom: 12 }}>
+                              <Text>{item.name}</Text>
+
+                              <View style={{ flexDirection: "row", marginTop: 6 }}>
+                                <Pressable
+                                  style={[styles.send, { marginRight: 8 }]}
+                                  onPress={() => acceptJoinRequest(item.uid)}
+                                >
+                                  <Text style={styles.sendText}>Accept</Text>
+                                </Pressable>
+
+                                <Pressable
+                                  style={[styles.send, { backgroundColor: "#9CA3AF" }]}
+                                  onPress={() => rejectJoinRequest(item.uid)}
+                                >
+                                  <Text style={styles.sendText}>Reject</Text>
+                                </Pressable>
+                              </View>
+                            </View>
+                          )}
+                        />
+
+                        <Pressable onPress={() => setShowRequestsModal(false)}>
+                          <Text style={{ textAlign: "center", marginTop: 12 }}>Close</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  </Modal>
+
             </View>
           )}}/>
 
