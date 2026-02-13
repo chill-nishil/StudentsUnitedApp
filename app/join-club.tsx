@@ -1,15 +1,17 @@
 import { db } from "@/FirebaseConfig";
+import { router } from "expo-router";
 import { getAuth } from "firebase/auth";
 import {
   arrayUnion,
   collection,
   doc,
   getDocs,
+  onSnapshot,
   query,
   updateDoc,
   where
 } from "firebase/firestore";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -27,6 +29,26 @@ export default function JoinClubScreen() {
   const [error, setError] = useState("");
   const [requestSent, setRequestSent] = useState(false);
 
+  useEffect(() => {
+    if (!currentUid) return;
+  
+    const q = query(collection(db, "users"), where("uid", "==", currentUid));
+  
+    const unsub = onSnapshot(q, snap => {
+      if (snap.empty) return;
+  
+      const data = snap.docs[0].data();
+  
+      if (data.clubId) {
+        router.replace({
+          pathname: "/chat-room",
+          params: { currentUid }
+        });    }
+    });
+  
+    return unsub;
+  }, [currentUid]);
+  
   async function searchClub() {
     setError("");
     setClubResult(null);

@@ -26,7 +26,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableWithoutFeedback,
+  // TouchableWithoutFeedback,
   View
 } from "react-native";
 
@@ -92,32 +92,56 @@ export default function ChatScreen() {
   return () => sub.remove();
 }, [showEmojiPicker]);
 
+  // useEffect(() => {
+  //   if (!currentUid) return;
+
+  //   async function loadUser() {
+  //   const q = query(collection(db, "users"), where("uid", "==", currentUid));
+  //   const snap = await getDocs(q);
+
+  //   if (!snap.empty) {
+  //     const data = snap.docs[0].data();
+  //     setUserName(data.name);
+  //     setPosition(data.position);
+  //     setClubName(data.clubName || "Club Chat");
+
+  //     if (!data.clubId) {
+  //       router.replace("/join-club");
+  //       return;
+  //     }
+
+  //     setUserClubId(data.clubId);
+  //   }
+
+
+  //   }
+
+  //   loadUser();
+  // }, [currentUid]);
+
   useEffect(() => {
-    if (!currentUid) return;
+  if (!currentUid) return;
 
-    async function loadUser() {
-    const q = query(collection(db, "users"), where("uid", "==", currentUid));
-    const snap = await getDocs(q);
+  const q = query(collection(db, "users"), where("uid", "==", currentUid));
 
-    if (!snap.empty) {
-      const data = snap.docs[0].data();
-      setUserName(data.name);
-      setPosition(data.position);
-      setClubName(data.clubName || "Club Chat");
+  const unsub = onSnapshot(q, snap => {
+    if (snap.empty) return;
 
-      if (!data.clubId) {
-        router.replace("/join-club");
-        return;
-      }
+    const data = snap.docs[0].data();
 
+    setUserName(data.name);
+    setPosition(data.position);
+    setClubName(data.clubName || "Club Chat");
+
+    if (!data.clubId) {
+      router.replace(`/join-club?uid=${currentUid}`);
+    } else {
       setUserClubId(data.clubId);
     }
+  });
 
-
-    }
-
-    loadUser();
-  }, [currentUid]);
+  return unsub;
+}, [currentUid]);
 
   useEffect(() => {
     if (!userClubId) return;
@@ -261,7 +285,7 @@ const isSingleEmoji = (text: string): boolean => {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={80}
     >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      {/* <TouchableWithoutFeedback onPress={Keyboard.dismiss}> */}
 
         <View style={styles.container}>
           {/* CLUB NAME HEADER */}
@@ -296,6 +320,8 @@ const isSingleEmoji = (text: string): boolean => {
             data={messages}
             keyExtractor={item => item.id}
             contentContainerStyle={{ paddingBottom: 16 }}
+            style={{ flex: 1 }}
+            keyboardShouldPersistTaps="handled"
 
             renderItem={({ item }) => {
             const isMine = item.senderName === userName;
@@ -418,8 +444,10 @@ const isSingleEmoji = (text: string): boolean => {
                   );
 
                   })}
+            </View>
+          )}}/>
 
-                  <Modal visible={showRequestsModal} transparent animationType="slide">
+          <Modal visible={showRequestsModal} transparent animationType="slide">
                     <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "center" }}>
                       <View style={{ backgroundColor: "white", margin: 20, padding: 16, borderRadius: 12 }}>
                         <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>
@@ -463,9 +491,6 @@ const isSingleEmoji = (text: string): boolean => {
                     </View>
                   </Modal>
 
-            </View>
-          )}}/>
-
           {showEmojiPicker && (
             <TextInput
               ref={emojiInputRef}
@@ -499,7 +524,7 @@ const isSingleEmoji = (text: string): boolean => {
           </View>
         )}
         </View>
-      </TouchableWithoutFeedback>
+      {/* </TouchableWithoutFeedback> */}
     </KeyboardAvoidingView>
   );
 }
