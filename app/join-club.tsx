@@ -1,25 +1,26 @@
 import { db } from "@/FirebaseConfig";
-import { useLocalSearchParams } from "expo-router";
+import { getAuth } from "firebase/auth";
 import {
-    arrayUnion,
-    collection,
-    doc,
-    getDocs,
-    query,
-    updateDoc,
-    where
+  arrayUnion,
+  collection,
+  doc,
+  getDocs,
+  query,
+  updateDoc,
+  where
 } from "firebase/firestore";
 import { useState } from "react";
 import {
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    View
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
 } from "react-native";
 
 export default function JoinClubScreen() {
-  const { uid } = useLocalSearchParams<{ uid: string }>();
+  const auth = getAuth();
+  const currentUid = auth.currentUser?.uid;
 
   const [searchText, setSearchText] = useState("");
   const [clubResult, setClubResult] = useState<any | null>(null);
@@ -54,12 +55,12 @@ export default function JoinClubScreen() {
   }
 
     async function sendJoinRequest() {
-    if (!clubResult || !uid) return;
+    if (!clubResult || !currentUid) return;
 
     const clubRef = doc(db, "clubs", clubResult.id);
 
     await updateDoc(clubRef, {
-        joinRequests: arrayUnion(uid)
+        joinRequests: arrayUnion(currentUid)
     });
 
     setRequestSent(true);

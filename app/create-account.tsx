@@ -80,14 +80,16 @@ export default function CreateAccountScreen() {
 
       const clubRef = await addDoc(collection(db, "clubs"), {
         name: clubName,
-        presidentUid: uid,
-        members: [uid]
+        presidentId: uid,
+        members: [uid],
+        joinRequests: []
       });
 
       console.log("CLUB CREATED:", clubRef.id);
 
       await updateDoc(doc(db, "users", uid), {
-        clubId: clubRef.id
+        clubId: clubRef.id,
+        clubName: clubName 
       });
 
       console.log("USER UPDATED WITH CLUB ID");

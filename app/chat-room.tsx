@@ -1,5 +1,6 @@
 import { db } from "@/FirebaseConfig";
-import { router, useLocalSearchParams } from "expo-router";
+import { router } from "expo-router";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 import {
   addDoc,
   arrayRemove,
@@ -41,7 +42,8 @@ type Message = {
 };
 
 export default function ChatScreen() {
-  const { uid } = useLocalSearchParams<{ uid: string }>();
+  const auth = getAuth();
+  const [currentUid, setCurrentUid] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -72,6 +74,13 @@ export default function ChatScreen() {
   const [requestUsers, setRequestUsers] = useState<any[]>([]);
 
   useEffect(() => {
+    const unsub = onAuthStateChanged(auth, user => {
+    setCurrentUid(user ? user.uid : null);
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
   const sub = Keyboard.addListener("keyboardDidHide", () => {
     if (showEmojiPicker) {
       setShowEmojiPicker(false);
@@ -84,29 +93,31 @@ export default function ChatScreen() {
 }, [showEmojiPicker]);
 
   useEffect(() => {
-    if (!uid) return;
+    if (!currentUid) return;
 
     async function loadUser() {
-      const q = query(collection(db, "users"), where("uid", "==", uid));
-      const snap = await getDocs(q);
+    const q = query(collection(db, "users"), where("uid", "==", currentUid));
+    const snap = await getDocs(q);
 
-      if (!snap.empty) {
-        const data = snap.docs[0].data();
-        setUserName(data.name);
-        setPosition(data.position);
-        setClubName(data.clubName || "Club Chat");
+    if (!snap.empty) {
+      const data = snap.docs[0].data();
+      setUserName(data.name);
+      setPosition(data.position);
+      setClubName(data.clubName || "Club Chat");
 
-        if (!data.clubId) {
-          router.replace(`/join-club?uid=${uid}`);
-          return;
-        }
-
-        setUserClubId(data.clubId);
+      if (!data.clubId) {
+        router.replace("/join-club");
+        return;
       }
+
+      setUserClubId(data.clubId);
+    }
+
+
     }
 
     loadUser();
-  }, [uid]);
+  }, [currentUid]);
 
   useEffect(() => {
     if (!userClubId) return;
@@ -135,30 +146,33 @@ export default function ChatScreen() {
   }, [userClubId]);
 
   useEffect(() => {
-  if (!userClubId || !uid) return;
+    if (!userClubId || !currentUid) return;
 
-  const clubRef = doc(db, "clubs", userClubId);
+    const clubRef = doc(db, "clubs", userClubId);
 
-  const unsub = onSnapshot(clubRef, async snap => {
-    if (!snap.exists()) return;
+    const unsub = onSnapshot(clubRef, snap => {
+      if (!snap.exists()) return;
 
-    const data = snap.data();
+      const data = snap.data();
 
-    setIsPresident(data.presidentId === uid);
+      setIsPresident(data.presidentId === currentUid);
 
-    if (data.joinRequests && data.joinRequests.length > 0) {
-      const usersSnap = await getDocs(
-        query(collection(db, "users"), where("uid", "in", data.joinRequests))
-      );
+      const requests = data.joinRequests || [];
 
-      setRequestUsers(usersSnap.docs.map(d => d.data()));
-    } else {
-      setRequestUsers([]);
-    }
-  });
+      if (requests.length > 0) {
+        getDocs(
+          query(collection(db, "users"), where("uid", "in", requests))
+        ).then(usersSnap => {
+          setRequestUsers(usersSnap.docs.map(d => d.data()));
+        });
+      } else {
+        setRequestUsers([]);
+      }
+    });
 
-  return unsub;
-}, [userClubId, uid]);
+    return unsub;
+  }, [userClubId, currentUid]);
+
 
 async function acceptJoinRequest(requestUid: string) {
   if (!userClubId) return;
