@@ -41,6 +41,65 @@ type Message = {
   };
 };
 
+// ADDED: date helpers
+function isValidDate(d: any): d is Date {
+  return d instanceof Date && !isNaN(d.getTime());
+}
+
+function toDateSafe(createdAt: any): Date | null {
+  if (!createdAt) return null;
+
+  if (typeof createdAt?.toDate === "function") {
+    const d = createdAt.toDate();
+    return isValidDate(d) ? d : null;
+  }
+
+  if (createdAt instanceof Date) return isValidDate(createdAt) ? createdAt : null;
+
+  if (typeof createdAt === "number") {
+    const d = new Date(createdAt);
+    return isValidDate(d) ? d : null;
+  }
+
+  if (typeof createdAt === "string") {
+    const d = new Date(createdAt);
+    return isValidDate(d) ? d : null;
+  }
+
+  return null;
+}
+
+function sameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function dayDiffFromToday(d: Date): number {
+  const today = startOfDay(new Date()).getTime();
+  const day = startOfDay(d).getTime();
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.round((day - today) / msPerDay);
+}
+
+function formatDayHeader(d: Date): string {
+  const diff = dayDiffFromToday(d);
+  if (diff === 0) return "Today";
+  if (diff === -1) return "Yesterday";
+
+  return d.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric"
+  });
+}
+
 export default function ChatScreen() {
   const auth = getAuth();
   const [currentUid, setCurrentUid] = useState<string | null>(null);
@@ -52,22 +111,18 @@ export default function ChatScreen() {
   const [clubName, setClubName] = useState("");
   const [userClubId, setUserClubId] = useState<string | null>(null);
 
-
   const [activeMessageId, setActiveMessageId] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [emojiInput, setEmojiInput] = useState("");
   const emojiInputRef = useRef<TextInput>(null);
-  const [expandedReactions, setExpandedReactions] = useState<
-  Record<string, string[]>
-  >({});
+  const [expandedReactions, setExpandedReactions] = useState<Record<string, string[]>>({});
   const cancelEmojiReaction = () => {
-  emojiInputRef.current?.blur();
-  Keyboard.dismiss();
-  setShowEmojiPicker(false);
-  setActiveMessageId(null);
-  setEmojiInput("");
-
-};
+    emojiInputRef.current?.blur();
+    Keyboard.dismiss();
+    setShowEmojiPicker(false);
+    setActiveMessageId(null);
+    setEmojiInput("");
+  };
 
   const [isPresident, setIsPresident] = useState(false);
   const [showRequestsModal, setShowRequestsModal] = useState(false);
@@ -75,73 +130,46 @@ export default function ChatScreen() {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, user => {
-    setCurrentUid(user ? user.uid : null);
+      setCurrentUid(user ? user.uid : null);
     });
     return unsub;
   }, []);
 
   useEffect(() => {
-  const sub = Keyboard.addListener("keyboardDidHide", () => {
-    if (showEmojiPicker) {
-      setShowEmojiPicker(false);
-      setActiveMessageId(null);
-      setEmojiInput("");
-    }
-  });
+    const sub = Keyboard.addListener("keyboardDidHide", () => {
+      if (showEmojiPicker) {
+        setShowEmojiPicker(false);
+        setActiveMessageId(null);
+        setEmojiInput("");
+      }
+    });
 
-  return () => sub.remove();
-}, [showEmojiPicker]);
-
-  // useEffect(() => {
-  //   if (!currentUid) return;
-
-  //   async function loadUser() {
-  //   const q = query(collection(db, "users"), where("uid", "==", currentUid));
-  //   const snap = await getDocs(q);
-
-  //   if (!snap.empty) {
-  //     const data = snap.docs[0].data();
-  //     setUserName(data.name);
-  //     setPosition(data.position);
-  //     setClubName(data.clubName || "Club Chat");
-
-  //     if (!data.clubId) {
-  //       router.replace("/join-club");
-  //       return;
-  //     }
-
-  //     setUserClubId(data.clubId);
-  //   }
-
-
-  //   }
-
-  //   loadUser();
-  // }, [currentUid]);
+    return () => sub.remove();
+  }, [showEmojiPicker]);
 
   useEffect(() => {
-  if (!currentUid) return;
+    if (!currentUid) return;
 
-  const q = query(collection(db, "users"), where("uid", "==", currentUid));
+    const q = query(collection(db, "users"), where("uid", "==", currentUid));
 
-  const unsub = onSnapshot(q, snap => {
-    if (snap.empty) return;
+    const unsub = onSnapshot(q, snap => {
+      if (snap.empty) return;
 
-    const data = snap.docs[0].data();
+      const data = snap.docs[0].data();
 
-    setUserName(data.name);
-    setPosition(data.position);
-    setClubName(data.clubName || "Club Chat");
+      setUserName(data.name);
+      setPosition(data.position);
+      setClubName(data.clubName || "Club Chat");
 
-    if (!data.clubId) {
-      router.replace(`/join-club?uid=${currentUid}`);
-    } else {
-      setUserClubId(data.clubId);
-    }
-  });
+      if (!data.clubId) {
+        router.replace(`/join-club?uid=${currentUid}`);
+      } else {
+        setUserClubId(data.clubId);
+      }
+    });
 
-  return unsub;
-}, [currentUid]);
+    return unsub;
+  }, [currentUid]);
 
   useEffect(() => {
     if (!userClubId) return;
@@ -184,9 +212,7 @@ export default function ChatScreen() {
       const requests = data.joinRequests || [];
 
       if (requests.length > 0) {
-        getDocs(
-          query(collection(db, "users"), where("uid", "in", requests))
-        ).then(usersSnap => {
+        getDocs(query(collection(db, "users"), where("uid", "in", requests))).then(usersSnap => {
           setRequestUsers(usersSnap.docs.map(d => d.data()));
         });
       } else {
@@ -197,87 +223,100 @@ export default function ChatScreen() {
     return unsub;
   }, [userClubId, currentUid]);
 
+  async function acceptJoinRequest(requestUid: string) {
+    if (!userClubId) return;
 
-async function acceptJoinRequest(requestUid: string) {
-  if (!userClubId) return;
+    const clubRef = doc(db, "clubs", userClubId);
+    const userRef = doc(db, "users", requestUid);
 
-  const clubRef = doc(db, "clubs", userClubId);
-  const userRef = doc(db, "users", requestUid);
+    await updateDoc(clubRef, {
+      members: arrayUnion(requestUid),
+      joinRequests: arrayRemove(requestUid)
+    });
 
-  await updateDoc(clubRef, {
-    members: arrayUnion(requestUid),
-    joinRequests: arrayRemove(requestUid)
-  });
+    await updateDoc(userRef, {
+      clubId: userClubId,
+      clubName: clubName
+    });
+  }
 
-  await updateDoc(userRef, {
-    clubId: userClubId,
-    clubName: clubName
-  });
-}
+  async function rejectJoinRequest(requestUid: string) {
+    if (!userClubId) return;
 
+    const clubRef = doc(db, "clubs", userClubId);
 
-
-async function rejectJoinRequest(requestUid: string) {
-  if (!userClubId) return;
-
-  const clubRef = doc(db, "clubs", userClubId);
-
-  await updateDoc(clubRef, {
-    joinRequests: arrayRemove(requestUid)
-  });
-}
-
+    await updateDoc(clubRef, {
+      joinRequests: arrayRemove(requestUid)
+    });
+  }
 
   async function sendMessage() {
-  if (!input.trim() || !userName || !userClubId) return;
+    if (!input.trim() || !userName || !userClubId) return;
 
-  await addDoc(collection(db, "chats"), {
-  message: input,
-  senderName: userName,
-  position: position,
-  clubId: userClubId,
-  createdAt: serverTimestamp(),
-  reactions: {}
-});
+    await addDoc(collection(db, "chats"), {
+      message: input,
+      senderName: userName,
+      position: position,
+      clubId: userClubId,
+      createdAt: serverTimestamp(),
+      reactions: {}
+    });
 
     setInput("");
   }
 
   async function handleReaction(messageId: string, emoji: string) {
-  const messageRef = doc(db, "chats", messageId);
-  const message = messages.find(m => m.id === messageId);
-  if (!message) return;
+    const messageRef = doc(db, "chats", messageId);
+    const message = messages.find(m => m.id === messageId);
+    if (!message) return;
 
-  const updates: Record<string, any> = {};
+    const updates: Record<string, any> = {};
 
-  const reactions = message.reactions || {};
+    const reactions = message.reactions || {};
 
-  // Remove user from any existing reaction
-  Object.keys(reactions).forEach(existingEmoji => {
-    const users = reactions[existingEmoji];
-    if (users.includes(userName)) {
-      updates[`reactions.${existingEmoji}`] = arrayRemove(userName);
+    // Remove user from any existing reaction
+    Object.keys(reactions).forEach(existingEmoji => {
+      const users = reactions[existingEmoji];
+      if (users.includes(userName)) {
+        updates[`reactions.${existingEmoji}`] = arrayRemove(userName);
+      }
+    });
+
+    const currentUsers = reactions[emoji] || [];
+
+    // Toggle logic
+    if (!currentUsers.includes(userName)) {
+      updates[`reactions.${emoji}`] = arrayUnion(userName);
     }
-  });
 
-  const currentUsers = reactions[emoji] || [];
+    await updateDoc(messageRef, updates);
 
-  // Toggle logic
-  if (!currentUsers.includes(userName)) {
-    updates[`reactions.${emoji}`] = arrayUnion(userName);
+    setShowEmojiPicker(false);
+    setActiveMessageId(null);
   }
 
-  await updateDoc(messageRef, updates);
+  const EMOJI_REGEX = /^\p{Extended_Pictographic}$/u;
 
-  setShowEmojiPicker(false);
-  setActiveMessageId(null);
-}
-const EMOJI_REGEX = /^\p{Extended_Pictographic}$/u;
+  const isSingleEmoji = (text: string): boolean => {
+    return EMOJI_REGEX.test(text);
+  };
 
-const isSingleEmoji = (text: string): boolean => {
-  return EMOJI_REGEX.test(text);
-};
+  // ADDED: format time for display next to React
+  const formatTime = (createdAt: any): string => {
+    try {
+      const d =
+        createdAt && typeof createdAt?.toDate === "function"
+          ? createdAt.toDate()
+          : createdAt instanceof Date
+            ? createdAt
+            : null;
 
+      if (!d || isNaN(d.getTime())) return "";
+      return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    } catch {
+      return "";
+    }
+  };
 
   return (
     <KeyboardAvoidingView
@@ -287,229 +326,207 @@ const isSingleEmoji = (text: string): boolean => {
     >
       {/* <TouchableWithoutFeedback onPress={Keyboard.dismiss}> */}
 
-        <View style={styles.container}>
-          {/* CLUB NAME HEADER */}
-          <Text style={styles.clubHeader}>
-            {clubName}
-          </Text>
+      <View style={styles.container}>
+        {/* CLUB NAME HEADER */}
+        <Text style={styles.clubHeader}>{clubName}</Text>
 
-          {/* USER INFO SUBHEADER */}
-          <Text style={styles.userHeader}>
-            {userName} · {position}
-          </Text>
+        {/* USER INFO SUBHEADER */}
+        <Text style={styles.userHeader}>
+          {userName} · {position}
+        </Text>
 
-          <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
-            <Pressable
-              style={styles.openCalendarButton}
-              onPress={() => router.push("/calendar")}
-            >
-              <Text style={styles.openCalendarText}>Add Event</Text>
+        <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
+          <Pressable style={styles.openCalendarButton} onPress={() => router.push("/calendar")}>
+            <Text style={styles.openCalendarText}>Add Event</Text>
+          </Pressable>
+
+          {isPresident && (
+            <Pressable style={styles.openCalendarButton} onPress={() => setShowRequestsModal(true)}>
+              <Text style={styles.openCalendarText}>Join Requests</Text>
             </Pressable>
+          )}
+        </View>
 
-            {isPresident && (
-              <Pressable
-                style={styles.openCalendarButton}
-                onPress={() => setShowRequestsModal(true)}
-              >
-                <Text style={styles.openCalendarText}>Join Requests</Text>
-              </Pressable>
-            )}
-          </View>
-
-          <FlatList
-            data={messages}
-            keyExtractor={item => item.id}
-            contentContainerStyle={{ paddingBottom: 16 }}
-            style={{ flex: 1 }}
-            keyboardShouldPersistTaps="handled"
-
-            renderItem={({ item }) => {
+        <FlatList
+          data={messages}
+          keyExtractor={item => item.id}
+          contentContainerStyle={{ paddingBottom: 16 }}
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          renderItem={({ item, index }) => {
             const isMine = item.senderName === userName;
-            const myReactionEmoji = item.reactions &&
+            const timeLabel = formatTime(item.createdAt);
+
+            // ADDED: date header logic
+            const curDate = toDateSafe(item.createdAt);
+            const prev = index > 0 ? messages[index - 1] : null;
+            const prevDate = prev ? toDateSafe(prev.createdAt) : null;
+            const showDayHeader = !!curDate && (!prevDate || !sameDay(curDate, prevDate));
+
+            const myReactionEmoji =
+              item.reactions &&
               Object.entries(item.reactions).find(([_, users]) => users.includes(userName))?.[0];
 
             return (
-              <View
-                style={[
-                  styles.messageGroup,
-                  isMine ? styles.alignRight : styles.alignLeft
-                ]}
-              >
-                <View
-                  style={[
-                    styles.message,
-                    isMine ? styles.myMessage : styles.otherMessage
-                  ]}
-                >
-                  <Text style={styles.sender}>
-                    {item.senderName} · {item.position}
-                  </Text>
-                  <Text
-                    style={isMine ? styles.myMessageText : styles.otherMessageText}
-                  >
-                    {item.message}
-                  </Text>
-                </View>
+              <View>
+                {showDayHeader && (
+                  <View style={styles.dayHeaderWrap}>
+                    <Text style={styles.dayHeaderText}>{formatDayHeader(curDate as Date)}</Text>
+                  </View>
+                )}
 
-                <Pressable
-                  style={styles.reactButton}
-                  onPress={() => {
-                    setActiveMessageId(item.id);
-                    setShowEmojiPicker(true);
-                    setTimeout(() => {
-                      emojiInputRef.current?.focus();
-                    }, 50);
-                  }}
-                >
-                  <Text style={styles.reactText}>
-                    {showEmojiPicker && activeMessageId === item.id
-                      ? "Select an emoji from keyboard"
-                      : "😊 React"}
-                  </Text>
-                </Pressable>
+                <View style={[styles.messageGroup, isMine ? styles.alignRight : styles.alignLeft]}>
+                  <View style={[styles.message, isMine ? styles.myMessage : styles.otherMessage]}>
+                    <Text style={styles.sender}>
+                      {item.senderName} · {item.position}
+                    </Text>
+                    <Text style={isMine ? styles.myMessageText : styles.otherMessageText}>{item.message}</Text>
+                  </View>
 
-              {item.reactions &&
-                Object.entries(item.reactions)
-                  .filter(([_, users]) => users.length > 0)
-                  .map(([emoji, users]) => {
-                    const expandedForMessage = expandedReactions[item.id] || [];
-                    const isExpanded = expandedForMessage.includes(emoji);
+                  <View style={styles.reactRow}>
+                    <Pressable
+                      style={styles.reactButton}
+                      onPress={() => {
+                        setActiveMessageId(item.id);
+                        setShowEmojiPicker(true);
+                        setTimeout(() => {
+                          emojiInputRef.current?.focus();
+                        }, 50);
+                      }}
+                    >
+                      <Text style={styles.reactText}>
+                        {showEmojiPicker && activeMessageId === item.id ? "Select an emoji from keyboard" : "😊 React"}
+                      </Text>
+                    </Pressable>
 
-                    const myReactionEmoji =
-                      item.reactions &&
-                      Object.entries(item.reactions).find(([_, u]) =>
-                        u.includes(userName)
-                      )?.[0];
+                    {!!timeLabel && <Text style={styles.reactTimeText}>{timeLabel}</Text>}
+                  </View>
 
-                    const hasReacted = myReactionEmoji === emoji;
+                  {item.reactions &&
+                    Object.entries(item.reactions)
+                      .filter(([_, users]) => users.length > 0)
+                      .map(([emoji, users]) => {
+                        const expandedForMessage = expandedReactions[item.id] || [];
+                        const isExpanded = expandedForMessage.includes(emoji);
 
-                    return (
-                    <View key={emoji} style={styles.reactionContainer}>
-                      <View style={styles.reactionTopRow}>
-                        <Pressable
-                          onPress={() => {
-                            setExpandedReactions(prev => {
-                              const next = { ...prev };
-                              const current = next[item.id] || [];
+                        const myReactionEmoji2 =
+                          item.reactions &&
+                          Object.entries(item.reactions).find(([_, u]) => u.includes(userName))?.[0];
 
-                              if (current.includes(emoji)) {
-                                next[item.id] = current.filter(e => e !== emoji);
-                              } else {
-                                next[item.id] = [...current, emoji];
-                              }
+                        const hasReacted = myReactionEmoji2 === emoji;
 
-                              return next;
-                            });
-                          }}
-                        >
-                          <View
-                            style={[
-                              styles.reactionBubble,
-                              hasReacted && styles.reactionBubbleActive
-                            ]}
-                          >
-                            <Text>
-                              {emoji} {users.length}
-                            </Text>
-                          </View>
-                        </Pressable>
+                        return (
+                          <View key={emoji} style={styles.reactionContainer}>
+                            <View style={styles.reactionTopRow}>
+                              <Pressable
+                                onPress={() => {
+                                  setExpandedReactions(prevState => {
+                                    const next = { ...prevState };
+                                    const current = next[item.id] || [];
 
-                        {hasReacted && (
-                          <Pressable
-                            style={styles.removeReaction}
-                            onPress={() => handleReaction(item.id, emoji)}
-                          >
-                            <Text style={styles.removeReactionText}>×</Text>
-                          </Pressable>
-                        )}
-                      </View>
+                                    if (current.includes(emoji)) {
+                                      next[item.id] = current.filter(e => e !== emoji);
+                                    } else {
+                                      next[item.id] = [...current, emoji];
+                                    }
 
-                      {isExpanded && (
-                        <View style={styles.reactionBottomRow}>
-                          <Text style={styles.reactionNames}>
-                            {users.join(", ")}
-                          </Text>
+                                    return next;
+                                  });
+                                }}
+                              >
+                                <View style={[styles.reactionBubble, hasReacted && styles.reactionBubbleActive]}>
+                                  <Text>
+                                    {emoji} {users.length}
+                                  </Text>
+                                </View>
+                              </Pressable>
 
-                          {!hasReacted && (
-                            <Pressable
-                              style={styles.addReactionButton}
-                              onPress={() => handleReaction(item.id, emoji)}
-                            >
-                              <Text style={styles.addReactionText}>+</Text>
-                            </Pressable>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  );
-
-                  })}
-            </View>
-          )}}/>
-
-          <Modal visible={showRequestsModal} transparent animationType="slide">
-                    <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "center" }}>
-                      <View style={{ backgroundColor: "white", margin: 20, padding: 16, borderRadius: 12 }}>
-                        <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>
-                          Join Requests
-                        </Text>
-
-                        {requestUsers.length === 0 && (
-                          <Text>No pending join requests</Text>
-                        )}
-
-                        <FlatList
-                          data={requestUsers}
-                          keyExtractor={item => item.uid}
-                          renderItem={({ item }) => (
-                            <View style={{ marginBottom: 12 }}>
-                              <Text>{item.name}</Text>
-
-                              <View style={{ flexDirection: "row", marginTop: 6 }}>
-                                <Pressable
-                                  style={[styles.send, { marginRight: 8 }]}
-                                  onPress={() => acceptJoinRequest(item.uid)}
-                                >
-                                  <Text style={styles.sendText}>Accept</Text>
+                              {hasReacted && (
+                                <Pressable style={styles.removeReaction} onPress={() => handleReaction(item.id, emoji)}>
+                                  <Text style={styles.removeReactionText}>×</Text>
                                 </Pressable>
-
-                                <Pressable
-                                  style={[styles.send, { backgroundColor: "#9CA3AF" }]}
-                                  onPress={() => rejectJoinRequest(item.uid)}
-                                >
-                                  <Text style={styles.sendText}>Reject</Text>
-                                </Pressable>
-                              </View>
+                              )}
                             </View>
-                          )}
-                        />
 
-                        <Pressable onPress={() => setShowRequestsModal(false)}>
-                          <Text style={{ textAlign: "center", marginTop: 12 }}>Close</Text>
-                        </Pressable>
-                      </View>
+                            {isExpanded && (
+                              <View style={styles.reactionBottomRow}>
+                                <Text style={styles.reactionNames}>{users.join(", ")}</Text>
+
+                                {!hasReacted && (
+                                  <Pressable
+                                    style={styles.addReactionButton}
+                                    onPress={() => handleReaction(item.id, emoji)}
+                                  >
+                                    <Text style={styles.addReactionText}>+</Text>
+                                  </Pressable>
+                                )}
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
+                </View>
+              </View>
+            );
+          }}
+        />
+
+        <Modal visible={showRequestsModal} transparent animationType="slide">
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "center" }}>
+            <View style={{ backgroundColor: "white", margin: 20, padding: 16, borderRadius: 12 }}>
+              <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>Join Requests</Text>
+
+              {requestUsers.length === 0 && <Text>No pending join requests</Text>}
+
+              <FlatList
+                data={requestUsers}
+                keyExtractor={item => item.uid}
+                renderItem={({ item }) => (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text>{item.name}</Text>
+
+                    <View style={{ flexDirection: "row", marginTop: 6 }}>
+                      <Pressable style={[styles.send, { marginRight: 8 }]} onPress={() => acceptJoinRequest(item.uid)}>
+                        <Text style={styles.sendText}>Accept</Text>
+                      </Pressable>
+
+                      <Pressable
+                        style={[styles.send, { backgroundColor: "#9CA3AF" }]}
+                        onPress={() => rejectJoinRequest(item.uid)}
+                      >
+                        <Text style={styles.sendText}>Reject</Text>
+                      </Pressable>
                     </View>
-                  </Modal>
+                  </View>
+                )}
+              />
 
-          {showEmojiPicker && (
-            <TextInput
-              ref={emojiInputRef}
-              value={emojiInput}
-              onChangeText={text => {
-                if (isSingleEmoji(text)) {
-                  handleReaction(activeMessageId as string, text);
-                  setEmojiInput("");
-                  setShowEmojiPicker(false);
-                } else {
-                  // reject letters, numbers, symbols, multiple characters
-                  setEmojiInput("");
-                }
-              }}
-              style={{ height: 0, width: 0 }}
-            />
-          )}
+              <Pressable onPress={() => setShowRequestsModal(false)}>
+                <Text style={{ textAlign: "center", marginTop: 12 }}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
 
-          {!showEmojiPicker && (
+        {showEmojiPicker && (
+          <TextInput
+            ref={emojiInputRef}
+            value={emojiInput}
+            onChangeText={text => {
+              if (isSingleEmoji(text)) {
+                handleReaction(activeMessageId as string, text);
+                setEmojiInput("");
+                setShowEmojiPicker(false);
+              } else {
+                // reject letters, numbers, symbols, multiple characters
+                setEmojiInput("");
+              }
+            }}
+            style={{ height: 0, width: 0 }}
+          />
+        )}
+
+        {!showEmojiPicker && (
           <View style={styles.row}>
             <TextInput
               value={input}
@@ -523,7 +540,7 @@ const isSingleEmoji = (text: string): boolean => {
             </Pressable>
           </View>
         )}
-        </View>
+      </View>
       {/* </TouchableWithoutFeedback> */}
     </KeyboardAvoidingView>
   );
@@ -547,6 +564,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     color: "#555"
   },
+
+  // ADDED: date header styles
+  dayHeaderWrap: {
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 6
+  },
+  dayHeaderText: {
+    fontSize: 12,
+    color: "#6B7280"
+  },
+
   sender: {
     fontSize: 12,
     fontWeight: "600",
@@ -589,7 +618,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 12,
     marginRight: 8,
-    backgroundColor: "white",
+    backgroundColor: "white"
   },
   send: {
     height: 48,
@@ -616,21 +645,21 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   },
   emojiPickerContainer: {
-  height: 320,
-  borderTopWidth: 1,
-  borderColor: "#E5E7EB"
+    height: 320,
+    borderTopWidth: 1,
+    borderColor: "#E5E7EB"
   },
   removeReaction: {
-  marginLeft: 6,
-  paddingHorizontal: 4
+    marginLeft: 6,
+    paddingHorizontal: 4
   },
   removeReactionText: {
-  fontSize: 14,
-  color: "#6B7280"
+    fontSize: 14,
+    color: "#6B7280"
   },
   myMessage: {
-  alignSelf: "flex-end",
-  backgroundColor: "#DBEAFE"
+    alignSelf: "flex-end",
+    backgroundColor: "#DBEAFE"
   },
   otherMessage: {
     alignSelf: "flex-start",
@@ -643,8 +672,8 @@ const styles = StyleSheet.create({
     color: "#000"
   },
   messageGroup: {
-  maxWidth: "80%",
-  marginVertical: 6
+    maxWidth: "80%",
+    marginVertical: 6
   },
   alignRight: {
     alignSelf: "flex-end",
@@ -655,9 +684,9 @@ const styles = StyleSheet.create({
     alignItems: "flex-start"
   },
   reactionNames: {
-  marginLeft: 6,
-  fontSize: 12,
-  color: "#374151"
+    marginLeft: 6,
+    fontSize: 12,
+    color: "#374151"
   },
   addReactionButton: {
     marginLeft: 6,
@@ -669,26 +698,36 @@ const styles = StyleSheet.create({
     color: "#6B7280"
   },
   reactionBubbleActive: {
-  backgroundColor: "#7b97d4"
-},
-reactionBubble: {
-  backgroundColor: "#E5E7EB",
-  borderRadius: 12,
-  paddingHorizontal: 8,
-  paddingVertical: 4
-},
-reactionContainer: {
-  marginLeft: 6,
-  marginTop: 2
-},
-reactionTopRow: {
-  flexDirection: "row",
-  alignItems: "center"
-},
-reactionBottomRow: {
-  flexDirection: "row",
-  alignItems: "center",
-  marginTop: 2
-}
+    backgroundColor: "#7b97d4"
+  },
+  reactionBubble: {
+    backgroundColor: "#E5E7EB",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4
+  },
+  reactionContainer: {
+    marginLeft: 6,
+    marginTop: 2
+  },
+  reactionTopRow: {
+    flexDirection: "row",
+    alignItems: "center"
+  },
+  reactionBottomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 2
+  },
 
+  // ADDED: layout + style for time next to React
+  reactRow: {
+    flexDirection: "row",
+    alignItems: "center"
+  },
+  reactTimeText: {
+    marginLeft: 8,
+    fontSize: 11,
+    color: "#6B7280"
+  }
 });
