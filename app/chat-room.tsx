@@ -1,4 +1,6 @@
 import { db } from "@/FirebaseConfig";
+import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
+import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import {
@@ -6,6 +8,7 @@ import {
   arrayRemove,
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   onSnapshot,
@@ -17,7 +20,9 @@ import {
 } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   FlatList,
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -39,6 +44,7 @@ type Message = {
   reactions?: {
     [emoji: string]: string[];
   };
+  mediaBase64?: string;
 };
 
 // ADDED: date helpers
@@ -128,6 +134,10 @@ export default function ChatScreen() {
   const [showRequestsModal, setShowRequestsModal] = useState(false);
   const [requestUsers, setRequestUsers] = useState<any[]>([]);
 
+  const [isPickingMedia, setIsPickingMedia] = useState(false);
+  const [pendingMediaBase64, setPendingMediaBase64] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, user => {
       setCurrentUid(user ? user.uid : null);
@@ -188,7 +198,8 @@ export default function ChatScreen() {
           senderName: data.senderName,
           position: data.position,
           createdAt: data.createdAt,
-          reactions: data.reactions || {}
+          reactions: data.reactions || {},
+          mediaBase64: data.mediaBase64
         };
       });
       setMessages(list);
@@ -251,18 +262,79 @@ export default function ChatScreen() {
   }
 
   async function sendMessage() {
-    if (!input.trim() || !userName || !userClubId) return;
+    if (!userName || !userClubId) return;
+    if (isSending) return;
 
-    await addDoc(collection(db, "chats"), {
-      message: input,
-      senderName: userName,
-      position: position,
-      clubId: userClubId,
-      createdAt: serverTimestamp(),
-      reactions: {}
-    });
+    const trimmed = input.trim();
+    const hasText = !!trimmed;
+    const hasMedia = !!pendingMediaBase64;
 
+    if (!hasText && !hasMedia) return;
+
+    const prevInput = input;
+    const prevMedia = pendingMediaBase64;
+
+    setIsSending(true);
     setInput("");
+    setPendingMediaBase64(null);
+
+    try {
+      await addDoc(collection(db, "chats"), {
+        message: hasText ? trimmed : "",
+        senderName: userName,
+        position: position,
+        clubId: userClubId,
+        createdAt: serverTimestamp(),
+        reactions: {},
+        ...(hasMedia ? { mediaBase64: prevMedia } : {})
+      });
+    } catch (e: any) {
+      console.log("SEND_ERROR", e?.code, e?.message, e);
+      setInput(prevInput);
+      setPendingMediaBase64(prevMedia);
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  async function pickMedia() {
+    if (isPickingMedia) return;
+
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== "granted") return;
+
+    setIsPickingMedia(true);
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.3
+      });
+
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) return;
+
+      const manipulated = await manipulateAsync(
+        asset.uri,
+        [{ resize: { width: 900 } }],
+        { compress: 0.4, format: SaveFormat.JPEG, base64: true }
+      );
+
+      const base64 = manipulated.base64 || null;
+      if (!base64) return;
+
+      if (base64.length > 900000) {
+        console.log("IMAGE_TOO_LARGE", base64.length);
+        return;
+      }
+
+      setPendingMediaBase64(base64);
+    } finally {
+      setIsPickingMedia(false);
+    }
   }
 
   async function handleReaction(messageId: string, emoji: string) {
@@ -274,7 +346,6 @@ export default function ChatScreen() {
 
     const reactions = message.reactions || {};
 
-    // Remove user from any existing reaction
     Object.keys(reactions).forEach(existingEmoji => {
       const users = reactions[existingEmoji];
       if (users.includes(userName)) {
@@ -284,7 +355,6 @@ export default function ChatScreen() {
 
     const currentUsers = reactions[emoji] || [];
 
-    // Toggle logic
     if (!currentUsers.includes(userName)) {
       updates[`reactions.${emoji}`] = arrayUnion(userName);
     }
@@ -295,13 +365,35 @@ export default function ChatScreen() {
     setActiveMessageId(null);
   }
 
+  function confirmDeleteMessage(messageId: string, sender: string) {
+    if (!userClubId) return;
+
+    const canDelete = sender === userName || isPresident;
+
+    if (!canDelete) return;
+
+    Alert.alert("Delete message?", "This will remove the message for everyone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, "chats", messageId));
+          } catch (e: any) {
+            console.log("DELETE_ERROR", e?.code, e?.message, e);
+          }
+        }
+      }
+    ]);
+  }
+
   const EMOJI_REGEX = /^\p{Extended_Pictographic}$/u;
 
   const isSingleEmoji = (text: string): boolean => {
     return EMOJI_REGEX.test(text);
   };
 
-  // ADDED: format time for display next to React
   const formatTime = (createdAt: any): string => {
     try {
       const d =
@@ -327,10 +419,8 @@ export default function ChatScreen() {
       {/* <TouchableWithoutFeedback onPress={Keyboard.dismiss}> */}
 
       <View style={styles.container}>
-        {/* CLUB NAME HEADER */}
         <Text style={styles.clubHeader}>{clubName}</Text>
 
-        {/* USER INFO SUBHEADER */}
         <Text style={styles.userHeader}>
           {userName} · {position}
         </Text>
@@ -354,18 +444,14 @@ export default function ChatScreen() {
           style={{ flex: 1 }}
           keyboardShouldPersistTaps="handled"
           renderItem={({ item, index }) => {
-            const isMine = item.senderName === userName;
             const timeLabel = formatTime(item.createdAt);
 
-            // ADDED: date header logic
             const curDate = toDateSafe(item.createdAt);
             const prev = index > 0 ? messages[index - 1] : null;
             const prevDate = prev ? toDateSafe(prev.createdAt) : null;
             const showDayHeader = !!curDate && (!prevDate || !sameDay(curDate, prevDate));
 
-            const myReactionEmoji =
-              item.reactions &&
-              Object.entries(item.reactions).find(([_, users]) => users.includes(userName))?.[0];
+            const canDelete = item.senderName === userName || isPresident;
 
             return (
               <View>
@@ -375,13 +461,37 @@ export default function ChatScreen() {
                   </View>
                 )}
 
-                <View style={[styles.messageGroup, isMine ? styles.alignRight : styles.alignLeft]}>
-                  <View style={[styles.message, isMine ? styles.myMessage : styles.otherMessage]}>
-                    <Text style={styles.sender}>
-                      {item.senderName} · {item.position}
-                    </Text>
-                    <Text style={isMine ? styles.myMessageText : styles.otherMessageText}>{item.message}</Text>
-                  </View>
+                <View style={[styles.messageGroup, item.senderName === userName ? styles.alignRight : styles.alignLeft]}>
+                  <Pressable
+                    onLongPress={() => confirmDeleteMessage(item.id, item.senderName)}
+                    disabled={!canDelete}
+                  >
+                    <View
+                      style={[
+                        styles.message,
+                        item.senderName === userName ? styles.myMessage : styles.otherMessage
+                      ]}
+                    >
+                      <Text style={styles.sender}>
+                        {item.senderName} · {item.position}
+                      </Text>
+
+                      {!!item.mediaBase64 && (
+                        <Image
+                          source={{ uri: `data:image/jpeg;base64,${item.mediaBase64}` }}
+                          style={styles.chatImage}
+                        />
+                      )}
+
+                      {!!item.message && (
+                        <Text
+                          style={item.senderName === userName ? styles.myMessageText : styles.otherMessageText}
+                        >
+                          {item.message}
+                        </Text>
+                      )}
+                    </View>
+                  </Pressable>
 
                   <View style={styles.reactRow}>
                     <Pressable
@@ -518,7 +628,6 @@ export default function ChatScreen() {
                 setEmojiInput("");
                 setShowEmojiPicker(false);
               } else {
-                // reject letters, numbers, symbols, multiple characters
                 setEmojiInput("");
               }
             }}
@@ -527,17 +636,36 @@ export default function ChatScreen() {
         )}
 
         {!showEmojiPicker && (
-          <View style={styles.row}>
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder="Type message here..."
-              placeholderTextColor="black"
-              style={styles.input}
-            />
-            <Pressable style={styles.send} onPress={sendMessage}>
-              <Text style={styles.sendText}>Send</Text>
-            </Pressable>
+          <View>
+            {!!pendingMediaBase64 && (
+              <View style={styles.pendingMediaWrap}>
+                <Image
+                  source={{ uri: `data:image/jpeg;base64,${pendingMediaBase64}` }}
+                  style={styles.pendingMediaImage}
+                />
+                <Pressable style={styles.pendingRemove} onPress={() => setPendingMediaBase64(null)} disabled={isSending}>
+                  <Text style={styles.pendingRemoveText}>×</Text>
+                </Pressable>
+              </View>
+            )}
+
+            <View style={styles.row}>
+              <Pressable style={styles.mediaButton} onPress={pickMedia} disabled={isPickingMedia || isSending}>
+                <Text style={styles.mediaButtonText}>{isPickingMedia ? "..." : "+"}</Text>
+              </Pressable>
+
+              <TextInput
+                value={input}
+                onChangeText={setInput}
+                placeholder="Type message here..."
+                placeholderTextColor="black"
+                style={styles.input}
+                editable={!isSending}
+              />
+              <Pressable style={styles.send} onPress={sendMessage} disabled={isSending}>
+                <Text style={styles.sendText}>{isSending ? "..." : "Send"}</Text>
+              </Pressable>
+            </View>
           </View>
         )}
       </View>
@@ -565,7 +693,6 @@ const styles = StyleSheet.create({
     color: "#555"
   },
 
-  // ADDED: date header styles
   dayHeaderWrap: {
     alignItems: "center",
     marginTop: 10,
@@ -720,7 +847,6 @@ const styles = StyleSheet.create({
     marginTop: 2
   },
 
-  // ADDED: layout + style for time next to React
   reactRow: {
     flexDirection: "row",
     alignItems: "center"
@@ -729,5 +855,55 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 11,
     color: "#6B7280"
+  },
+
+  mediaButton: {
+    height: 48,
+    width: 48,
+    borderRadius: 8,
+    marginRight: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#E5E7EB"
+  },
+  mediaButtonText: {
+    fontSize: 22,
+    color: "#111827",
+    fontWeight: "700"
+  },
+  chatImage: {
+    width: 220,
+    height: 220,
+    borderRadius: 10,
+    marginTop: 6,
+    marginBottom: 6
+  },
+
+  pendingMediaWrap: {
+    marginTop: 10,
+    marginBottom: 6,
+    alignSelf: "flex-start"
+  },
+  pendingMediaImage: {
+    width: 160,
+    height: 160,
+    borderRadius: 10
+  },
+  pendingRemove: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  pendingRemoveText: {
+    color: "white",
+    fontSize: 18,
+    fontWeight: "700",
+    lineHeight: 18
   }
 });
