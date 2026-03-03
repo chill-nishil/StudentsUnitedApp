@@ -23,6 +23,7 @@ import {
   Alert,
   FlatList,
   Image,
+  ImageBackground,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -138,6 +139,10 @@ export default function ChatScreen() {
   const [pendingMediaBase64, setPendingMediaBase64] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
 
+  // ADDED: chat background image
+  const [chatBackgroundBase64, setChatBackgroundBase64] = useState<string | null>(null);
+  const [isPickingBackground, setIsPickingBackground] = useState(false);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, user => {
       setCurrentUid(user ? user.uid : null);
@@ -219,6 +224,9 @@ export default function ChatScreen() {
       const data = snap.data();
 
       setIsPresident(data.presidentId === currentUid);
+
+      // ADDED: background image from club doc
+      setChatBackgroundBase64(data.chatBackgroundBase64 || null);
 
       const requests = data.joinRequests || [];
 
@@ -308,7 +316,8 @@ export default function ChatScreen() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
+        allowsEditing: false,
+        aspect: [9, 16], // vertical rectangle
         quality: 0.3
       });
 
@@ -335,6 +344,72 @@ export default function ChatScreen() {
     } finally {
       setIsPickingMedia(false);
     }
+  }
+
+  // ADDED: president sets chat background image on the club doc
+  async function pickChatBackground() {
+    if (!isPresident) return;
+    if (!userClubId) return;
+    if (isPickingBackground) return;
+
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== "granted") return;
+
+    setIsPickingBackground(true);
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        aspect: [9, 16], // vertical rectangle
+        quality: 0.3
+      });
+
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) return;
+
+      const manipulated = await manipulateAsync(
+        asset.uri,
+        [{ resize: { width: 1200 } }],
+        { compress: 0.35, format: SaveFormat.JPEG, base64: true }
+      );
+
+      const base64 = manipulated.base64 || null;
+      if (!base64) return;
+
+      if (base64.length > 1100000) {
+        console.log("BG_TOO_LARGE", base64.length);
+        return;
+      }
+
+      const clubRef = doc(db, "clubs", userClubId);
+      await updateDoc(clubRef, { chatBackgroundBase64: base64 });
+    } finally {
+      setIsPickingBackground(false);
+    }
+  }
+
+  async function clearChatBackground() {
+    if (!isPresident) return;
+    if (!userClubId) return;
+
+    Alert.alert("Remove background?", "This will reset the chat background for everyone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const clubRef = doc(db, "clubs", userClubId);
+            await updateDoc(clubRef, { chatBackgroundBase64: null });
+          } catch (e: any) {
+            console.log("CLEAR_BG_ERROR", e?.code, e?.message, e);
+          }
+        }
+      }
+    ]);
   }
 
   async function handleReaction(messageId: string, emoji: string) {
@@ -410,6 +485,229 @@ export default function ChatScreen() {
     }
   };
 
+  const ChatBody = (
+    <View style={{ flex: 1 }}>
+      <FlatList
+        data={messages}
+        keyExtractor={item => item.id}
+        contentContainerStyle={{ paddingBottom: 16 }}
+        style={{ flex: 1 }}
+        keyboardShouldPersistTaps="handled"
+        renderItem={({ item, index }) => {
+          const timeLabel = formatTime(item.createdAt);
+
+          const curDate = toDateSafe(item.createdAt);
+          const prev = index > 0 ? messages[index - 1] : null;
+          const prevDate = prev ? toDateSafe(prev.createdAt) : null;
+          const showDayHeader = !!curDate && (!prevDate || !sameDay(curDate, prevDate));
+
+          const canDelete = item.senderName === userName || isPresident;
+
+          return (
+            <View>
+              {showDayHeader && (
+                <View style={styles.dayHeaderWrap}>
+                  <Text style={styles.dayHeaderText}>{formatDayHeader(curDate as Date)}</Text>
+                </View>
+              )}
+
+              <View style={[styles.messageGroup, item.senderName === userName ? styles.alignRight : styles.alignLeft]}>
+                <Pressable onLongPress={() => confirmDeleteMessage(item.id, item.senderName)} disabled={!canDelete}>
+                  <View style={[styles.message, item.senderName === userName ? styles.myMessage : styles.otherMessage]}>
+                    <Text style={styles.sender}>
+                      {item.senderName} · {item.position}
+                    </Text>
+
+                    {!!item.mediaBase64 && (
+                      <Image
+                        source={{ uri: `data:image/jpeg;base64,${item.mediaBase64}` }}
+                        style={styles.chatImage}
+                      />
+                    )}
+
+                    {!!item.message && (
+                      <Text style={item.senderName === userName ? styles.myMessageText : styles.otherMessageText}>
+                        {item.message}
+                      </Text>
+                    )}
+                  </View>
+                </Pressable>
+
+                <View style={styles.reactRow}>
+                  <Pressable
+                    style={styles.reactButton}
+                    onPress={() => {
+                      setActiveMessageId(item.id);
+                      setShowEmojiPicker(true);
+                      setTimeout(() => {
+                        emojiInputRef.current?.focus();
+                      }, 50);
+                    }}
+                  >
+                    <Text style={styles.reactText}>
+                      {showEmojiPicker && activeMessageId === item.id ? "Select an emoji from keyboard" : "😊 React"}
+                    </Text>
+                  </Pressable>
+
+                  {!!timeLabel && <Text style={styles.reactTimeText}>{timeLabel}</Text>}
+                </View>
+
+                {item.reactions &&
+                  Object.entries(item.reactions)
+                    .filter(([_, users]) => users.length > 0)
+                    .map(([emoji, users]) => {
+                      const expandedForMessage = expandedReactions[item.id] || [];
+                      const isExpanded = expandedForMessage.includes(emoji);
+
+                      const myReactionEmoji2 =
+                        item.reactions &&
+                        Object.entries(item.reactions).find(([_, u]) => u.includes(userName))?.[0];
+
+                      const hasReacted = myReactionEmoji2 === emoji;
+
+                      return (
+                        <View key={emoji} style={styles.reactionContainer}>
+                          <View style={styles.reactionTopRow}>
+                            <Pressable
+                              onPress={() => {
+                                setExpandedReactions(prevState => {
+                                  const next = { ...prevState };
+                                  const current = next[item.id] || [];
+
+                                  if (current.includes(emoji)) {
+                                    next[item.id] = current.filter(e => e !== emoji);
+                                  } else {
+                                    next[item.id] = [...current, emoji];
+                                  }
+
+                                  return next;
+                                });
+                              }}
+                            >
+                              <View style={[styles.reactionBubble, hasReacted && styles.reactionBubbleActive]}>
+                                <Text>
+                                  {emoji} {users.length}
+                                </Text>
+                              </View>
+                            </Pressable>
+
+                            {hasReacted && (
+                              <Pressable style={styles.removeReaction} onPress={() => handleReaction(item.id, emoji)}>
+                                <Text style={styles.removeReactionText}>×</Text>
+                              </Pressable>
+                            )}
+                          </View>
+
+                          {isExpanded && (
+                            <View style={styles.reactionBottomRow}>
+                              <Text style={styles.reactionNames}>{users.join(", ")}</Text>
+
+                              {!hasReacted && (
+                                <Pressable
+                                  style={styles.addReactionButton}
+                                  onPress={() => handleReaction(item.id, emoji)}
+                                >
+                                  <Text style={styles.addReactionText}>+</Text>
+                                </Pressable>
+                              )}
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+              </View>
+            </View>
+          );
+        }}
+      />
+
+      <Modal visible={showRequestsModal} transparent animationType="slide">
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "center" }}>
+          <View style={{ backgroundColor: "white", margin: 20, padding: 16, borderRadius: 12 }}>
+            <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>Join Requests</Text>
+
+            {requestUsers.length === 0 && <Text>No pending join requests</Text>}
+
+            <FlatList
+              data={requestUsers}
+              keyExtractor={item => item.uid}
+              renderItem={({ item }) => (
+                <View style={{ marginBottom: 12 }}>
+                  <Text>{item.name}</Text>
+
+                  <View style={{ flexDirection: "row", marginTop: 6 }}>
+                    <Pressable style={[styles.send, { marginRight: 8 }]} onPress={() => acceptJoinRequest(item.uid)}>
+                      <Text style={styles.sendText}>Accept</Text>
+                    </Pressable>
+
+                    <Pressable
+                      style={[styles.send, { backgroundColor: "#9CA3AF" }]}
+                      onPress={() => rejectJoinRequest(item.uid)}
+                    >
+                      <Text style={styles.sendText}>Reject</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+            />
+
+            <Pressable onPress={() => setShowRequestsModal(false)}>
+              <Text style={{ textAlign: "center", marginTop: 12 }}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {showEmojiPicker && (
+        <TextInput
+          ref={emojiInputRef}
+          value={emojiInput}
+          onChangeText={text => {
+            if (isSingleEmoji(text)) {
+              handleReaction(activeMessageId as string, text);
+              setEmojiInput("");
+              setShowEmojiPicker(false);
+            } else {
+              setEmojiInput("");
+            }
+          }}
+          style={{ height: 0, width: 0 }}
+        />
+      )}
+
+      {!showEmojiPicker && (
+        <View>
+          {!!pendingMediaBase64 && (
+            <View style={styles.pendingMediaWrap}>
+              <Image source={{ uri: `data:image/jpeg;base64,${pendingMediaBase64}` }} style={styles.pendingMediaImage} />
+              <Pressable style={styles.pendingRemove} onPress={() => setPendingMediaBase64(null)} disabled={isSending}>
+                <Text style={styles.pendingRemoveText}>×</Text>
+              </Pressable>
+            </View>
+          )}
+
+          <View style={styles.row}>
+            <Pressable style={styles.mediaButton} onPress={pickMedia} disabled={isPickingMedia || isSending}>
+              <Text style={styles.mediaButtonText}>{isPickingMedia ? "..." : "+"}</Text>
+            </Pressable>
+
+            <TextInput
+              value={input}
+              onChangeText={setInput}
+              placeholder="Type message here..."
+              placeholderTextColor="black"
+              style={styles.input}
+              editable={!isSending}
+            />
+            <Pressable style={styles.send} onPress={sendMessage} disabled={isSending}>
+              <Text style={styles.sendText}>{isSending ? "..." : "Send"}</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -425,6 +723,7 @@ export default function ChatScreen() {
           {userName} · {position}
         </Text>
 
+
         <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
           <Pressable style={styles.openCalendarButton} onPress={() => router.push("/calendar")}>
             <Text style={styles.openCalendarText}>Add Event</Text>
@@ -437,237 +736,33 @@ export default function ChatScreen() {
           )}
         </View>
 
-        <FlatList
-          data={messages}
-          keyExtractor={item => item.id}
-          contentContainerStyle={{ paddingBottom: 16 }}
-          style={{ flex: 1 }}
-          keyboardShouldPersistTaps="handled"
-          renderItem={({ item, index }) => {
-            const timeLabel = formatTime(item.createdAt);
+        {isPresident && (
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
+            <Pressable style={styles.openCalendarButton} onPress={pickChatBackground} disabled={isPickingBackground}>
+              <Text style={styles.openCalendarText}>{isPickingBackground ? "..." : "Chat Background"}</Text>
+            </Pressable>
 
-            const curDate = toDateSafe(item.createdAt);
-            const prev = index > 0 ? messages[index - 1] : null;
-            const prevDate = prev ? toDateSafe(prev.createdAt) : null;
-            const showDayHeader = !!curDate && (!prevDate || !sameDay(curDate, prevDate));
-
-            const canDelete = item.senderName === userName || isPresident;
-
-            return (
-              <View>
-                {showDayHeader && (
-                  <View style={styles.dayHeaderWrap}>
-                    <Text style={styles.dayHeaderText}>{formatDayHeader(curDate as Date)}</Text>
-                  </View>
-                )}
-
-                <View style={[styles.messageGroup, item.senderName === userName ? styles.alignRight : styles.alignLeft]}>
-                  <Pressable
-                    onLongPress={() => confirmDeleteMessage(item.id, item.senderName)}
-                    disabled={!canDelete}
-                  >
-                    <View
-                      style={[
-                        styles.message,
-                        item.senderName === userName ? styles.myMessage : styles.otherMessage
-                      ]}
-                    >
-                      <Text style={styles.sender}>
-                        {item.senderName} · {item.position}
-                      </Text>
-
-                      {!!item.mediaBase64 && (
-                        <Image
-                          source={{ uri: `data:image/jpeg;base64,${item.mediaBase64}` }}
-                          style={styles.chatImage}
-                        />
-                      )}
-
-                      {!!item.message && (
-                        <Text
-                          style={item.senderName === userName ? styles.myMessageText : styles.otherMessageText}
-                        >
-                          {item.message}
-                        </Text>
-                      )}
-                    </View>
-                  </Pressable>
-
-                  <View style={styles.reactRow}>
-                    <Pressable
-                      style={styles.reactButton}
-                      onPress={() => {
-                        setActiveMessageId(item.id);
-                        setShowEmojiPicker(true);
-                        setTimeout(() => {
-                          emojiInputRef.current?.focus();
-                        }, 50);
-                      }}
-                    >
-                      <Text style={styles.reactText}>
-                        {showEmojiPicker && activeMessageId === item.id ? "Select an emoji from keyboard" : "😊 React"}
-                      </Text>
-                    </Pressable>
-
-                    {!!timeLabel && <Text style={styles.reactTimeText}>{timeLabel}</Text>}
-                  </View>
-
-                  {item.reactions &&
-                    Object.entries(item.reactions)
-                      .filter(([_, users]) => users.length > 0)
-                      .map(([emoji, users]) => {
-                        const expandedForMessage = expandedReactions[item.id] || [];
-                        const isExpanded = expandedForMessage.includes(emoji);
-
-                        const myReactionEmoji2 =
-                          item.reactions &&
-                          Object.entries(item.reactions).find(([_, u]) => u.includes(userName))?.[0];
-
-                        const hasReacted = myReactionEmoji2 === emoji;
-
-                        return (
-                          <View key={emoji} style={styles.reactionContainer}>
-                            <View style={styles.reactionTopRow}>
-                              <Pressable
-                                onPress={() => {
-                                  setExpandedReactions(prevState => {
-                                    const next = { ...prevState };
-                                    const current = next[item.id] || [];
-
-                                    if (current.includes(emoji)) {
-                                      next[item.id] = current.filter(e => e !== emoji);
-                                    } else {
-                                      next[item.id] = [...current, emoji];
-                                    }
-
-                                    return next;
-                                  });
-                                }}
-                              >
-                                <View style={[styles.reactionBubble, hasReacted && styles.reactionBubbleActive]}>
-                                  <Text>
-                                    {emoji} {users.length}
-                                  </Text>
-                                </View>
-                              </Pressable>
-
-                              {hasReacted && (
-                                <Pressable style={styles.removeReaction} onPress={() => handleReaction(item.id, emoji)}>
-                                  <Text style={styles.removeReactionText}>×</Text>
-                                </Pressable>
-                              )}
-                            </View>
-
-                            {isExpanded && (
-                              <View style={styles.reactionBottomRow}>
-                                <Text style={styles.reactionNames}>{users.join(", ")}</Text>
-
-                                {!hasReacted && (
-                                  <Pressable
-                                    style={styles.addReactionButton}
-                                    onPress={() => handleReaction(item.id, emoji)}
-                                  >
-                                    <Text style={styles.addReactionText}>+</Text>
-                                  </Pressable>
-                                )}
-                              </View>
-                            )}
-                          </View>
-                        );
-                      })}
-                </View>
-              </View>
-            );
-          }}
-        />
-
-        <Modal visible={showRequestsModal} transparent animationType="slide">
-          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "center" }}>
-            <View style={{ backgroundColor: "white", margin: 20, padding: 16, borderRadius: 12 }}>
-              <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>Join Requests</Text>
-
-              {requestUsers.length === 0 && <Text>No pending join requests</Text>}
-
-              <FlatList
-                data={requestUsers}
-                keyExtractor={item => item.uid}
-                renderItem={({ item }) => (
-                  <View style={{ marginBottom: 12 }}>
-                    <Text>{item.name}</Text>
-
-                    <View style={{ flexDirection: "row", marginTop: 6 }}>
-                      <Pressable style={[styles.send, { marginRight: 8 }]} onPress={() => acceptJoinRequest(item.uid)}>
-                        <Text style={styles.sendText}>Accept</Text>
-                      </Pressable>
-
-                      <Pressable
-                        style={[styles.send, { backgroundColor: "#9CA3AF" }]}
-                        onPress={() => rejectJoinRequest(item.uid)}
-                      >
-                        <Text style={styles.sendText}>Reject</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                )}
-              />
-
-              <Pressable onPress={() => setShowRequestsModal(false)}>
-                <Text style={{ textAlign: "center", marginTop: 12 }}>Close</Text>
+            {!!chatBackgroundBase64 && (
+              <Pressable style={styles.openCalendarButton} onPress={clearChatBackground}>
+                <Text style={styles.openCalendarText}>Remove Background</Text>
               </Pressable>
-            </View>
-          </View>
-        </Modal>
-
-        {showEmojiPicker && (
-          <TextInput
-            ref={emojiInputRef}
-            value={emojiInput}
-            onChangeText={text => {
-              if (isSingleEmoji(text)) {
-                handleReaction(activeMessageId as string, text);
-                setEmojiInput("");
-                setShowEmojiPicker(false);
-              } else {
-                setEmojiInput("");
-              }
-            }}
-            style={{ height: 0, width: 0 }}
-          />
-        )}
-
-        {!showEmojiPicker && (
-          <View>
-            {!!pendingMediaBase64 && (
-              <View style={styles.pendingMediaWrap}>
-                <Image
-                  source={{ uri: `data:image/jpeg;base64,${pendingMediaBase64}` }}
-                  style={styles.pendingMediaImage}
-                />
-                <Pressable style={styles.pendingRemove} onPress={() => setPendingMediaBase64(null)} disabled={isSending}>
-                  <Text style={styles.pendingRemoveText}>×</Text>
-                </Pressable>
-              </View>
             )}
-
-            <View style={styles.row}>
-              <Pressable style={styles.mediaButton} onPress={pickMedia} disabled={isPickingMedia || isSending}>
-                <Text style={styles.mediaButtonText}>{isPickingMedia ? "..." : "+"}</Text>
-              </Pressable>
-
-              <TextInput
-                value={input}
-                onChangeText={setInput}
-                placeholder="Type message here..."
-                placeholderTextColor="black"
-                style={styles.input}
-                editable={!isSending}
-              />
-              <Pressable style={styles.send} onPress={sendMessage} disabled={isSending}>
-                <Text style={styles.sendText}>{isSending ? "..." : "Send"}</Text>
-              </Pressable>
-            </View>
           </View>
         )}
+
+        <View style={styles.chatArea}>
+          {!!chatBackgroundBase64 ? (
+            <ImageBackground
+              source={{ uri: `data:image/jpeg;base64,${chatBackgroundBase64}` }}
+              style={styles.chatBg}
+              resizeMode="cover"
+            >
+              <View style={styles.chatBgOverlay}>{ChatBody}</View>
+            </ImageBackground>
+          ) : (
+            <View style={{ flex: 1 }}>{ChatBody}</View>
+          )}
+        </View>
       </View>
       {/* </TouchableWithoutFeedback> */}
     </KeyboardAvoidingView>
@@ -691,6 +786,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 12,
     color: "#555"
+  },
+
+  // ADDED: chat background wrappers
+  chatArea: {
+    flex: 1,
+    marginTop: 10
+  },
+  chatBg: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: "hidden"
+  },
+  chatBgOverlay: {
+    flex: 1,
+    padding: 10,
+    backgroundColor: "rgba(255,255,255,0.35)"
   },
 
   dayHeaderWrap: {
@@ -768,7 +879,7 @@ const styles = StyleSheet.create({
   },
   openCalendarText: {
     color: "white",
-    fontSize: 16,
+    fontSize: 12,
     fontWeight: "600"
   },
   emojiPickerContainer: {
