@@ -143,6 +143,8 @@ export default function ChatScreen() {
   const [chatBackgroundBase64, setChatBackgroundBase64] = useState<string | null>(null);
   const [isPickingBackground, setIsPickingBackground] = useState(false);
 
+  const hasBackground = !!chatBackgroundBase64;
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, user => {
       setCurrentUid(user ? user.uid : null);
@@ -507,10 +509,16 @@ export default function ChatScreen() {
             <View>
               {showDayHeader && (
                 <View style={styles.dayHeaderWrap}>
-                  <Text style={styles.dayHeaderText}>{formatDayHeader(curDate as Date)}</Text>
+                  <Text
+                    style={[
+                      styles.dayHeaderText,
+                      hasBackground && styles.darkOverlayText
+                    ]}
+                  >
+                    {formatDayHeader(curDate as Date)}
+                  </Text>
                 </View>
               )}
-
               <View style={[styles.messageGroup, item.senderName === userName ? styles.alignRight : styles.alignLeft]}>
                 <Pressable onLongPress={() => confirmDeleteMessage(item.id, item.senderName)} disabled={!canDelete}>
                   <View style={[styles.message, item.senderName === userName ? styles.myMessage : styles.otherMessage]}>
@@ -544,12 +552,28 @@ export default function ChatScreen() {
                       }, 50);
                     }}
                   >
-                    <Text style={styles.reactText}>
-                      {showEmojiPicker && activeMessageId === item.id ? "Select an emoji from keyboard" : "😊 React"}
-                    </Text>
-                  </Pressable>
+                  <Text
+                    style={[
+                      styles.reactText,
+                      hasBackground && styles.darkSubText
+                    ]}
+                  >
+                    {showEmojiPicker && activeMessageId === item.id
+                      ? "Select an emoji from keyboard"
+                      : "😊 React"}
+                  </Text>
+                </Pressable>
 
-                  {!!timeLabel && <Text style={styles.reactTimeText}>{timeLabel}</Text>}
+                {!!timeLabel && (
+                  <Text
+                    style={[
+                      styles.reactTimeText,
+                      hasBackground && styles.darkSubText
+                    ]}
+                  >
+                    {timeLabel}
+                  </Text>
+                )}                
                 </View>
 
                 {item.reactions &&
@@ -600,14 +624,24 @@ export default function ChatScreen() {
 
                           {isExpanded && (
                             <View style={styles.reactionBottomRow}>
-                              <Text style={styles.reactionNames}>{users.join(", ")}</Text>
-
+                              <Text
+                                style={[
+                                  styles.reactionNames,
+                                  hasBackground && styles.darkSubText
+                                ]}
+                              >
+                                {users.join(", ")}
+                              </Text>
                               {!hasReacted && (
                                 <Pressable
                                   style={styles.addReactionButton}
                                   onPress={() => handleReaction(item.id, emoji)}
                                 >
-                                  <Text style={styles.addReactionText}>+</Text>
+                                  <Image
+                                    source={require("../assets/images/imageGraphic.jpg")}
+                                    style={styles.mediaIcon}
+                                    resizeMode="contain"
+                                  />
                                 </Pressable>
                               )}
                             </View>
@@ -688,7 +722,11 @@ export default function ChatScreen() {
 
           <View style={styles.row}>
             <Pressable style={styles.mediaButton} onPress={pickMedia} disabled={isPickingMedia || isSending}>
-              <Text style={styles.mediaButtonText}>{isPickingMedia ? "..." : "+"}</Text>
+              <Image
+              source={require("../assets/images/imageGraphic.jpg")}
+              style={styles.mediaIcon}
+              resizeMode="contain"
+              />
             </Pressable>
 
             <TextInput
@@ -709,20 +747,64 @@ export default function ChatScreen() {
   );
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={80}
-    >
-      {/* <TouchableWithoutFeedback onPress={Keyboard.dismiss}> */}
+  <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === "ios" ? "padding" : "height"}
+    keyboardVerticalOffset={80}
+  >
+    {!!chatBackgroundBase64 ? (
+      <ImageBackground
+        source={{ uri: `data:image/jpeg;base64,${chatBackgroundBase64}` }}
+        style={{ flex: 1 }}
+        resizeMode="cover"
+      >
+        <View style={styles.screenOverlay}>
+          <View style={[styles.container, { backgroundColor: "transparent" }]}>
+            <Text style={styles.clubHeader}>{clubName}</Text>
 
+            <Text style={styles.userHeader}>
+              {userName} · {position}
+            </Text>
+
+            <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
+              <Pressable style={styles.openCalendarButton} onPress={() => router.push("/calendar")}>
+                <Text style={styles.openCalendarText}>Add Event</Text>
+              </Pressable>
+
+              {isPresident && (
+                <Pressable style={styles.openCalendarButton} onPress={() => setShowRequestsModal(true)}>
+                  <Text style={styles.openCalendarText}>Join Requests</Text>
+                </Pressable>
+              )}
+            </View>
+
+            {isPresident && (
+              <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
+                <Pressable
+                  style={styles.openCalendarButton}
+                  onPress={pickChatBackground}
+                  disabled={isPickingBackground}
+                >
+                  <Text style={styles.openCalendarText}>{isPickingBackground ? "..." : "Chat Background"}</Text>
+                </Pressable>
+
+                <Pressable style={styles.openCalendarButton} onPress={clearChatBackground}>
+                  <Text style={styles.openCalendarText}>Remove Background</Text>
+                </Pressable>
+              </View>
+            )}
+
+            <View style={styles.chatArea}>{ChatBody}</View>
+          </View>
+        </View>
+      </ImageBackground>
+    ) : (
       <View style={styles.container}>
         <Text style={styles.clubHeader}>{clubName}</Text>
 
         <Text style={styles.userHeader}>
           {userName} · {position}
         </Text>
-
 
         <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
           <Pressable style={styles.openCalendarButton} onPress={() => router.push("/calendar")}>
@@ -750,23 +832,11 @@ export default function ChatScreen() {
           </View>
         )}
 
-        <View style={styles.chatArea}>
-          {!!chatBackgroundBase64 ? (
-            <ImageBackground
-              source={{ uri: `data:image/jpeg;base64,${chatBackgroundBase64}` }}
-              style={styles.chatBg}
-              resizeMode="cover"
-            >
-              <View style={styles.chatBgOverlay}>{ChatBody}</View>
-            </ImageBackground>
-          ) : (
-            <View style={{ flex: 1 }}>{ChatBody}</View>
-          )}
-        </View>
+        <View style={styles.chatArea}>{ChatBody}</View>
       </View>
-      {/* </TouchableWithoutFeedback> */}
-    </KeyboardAvoidingView>
-  );
+    )}
+  </KeyboardAvoidingView>
+);
 }
 
 const styles = StyleSheet.create({
@@ -854,6 +924,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#ccc",
     borderRadius: 8,
+    fontSize: 12,
     paddingHorizontal: 12,
     marginRight: 8,
     backgroundColor: "white"
@@ -928,7 +999,10 @@ const styles = StyleSheet.create({
   },
   addReactionButton: {
     marginLeft: 6,
-    paddingHorizontal: 6
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
   },
   addReactionText: {
     fontSize: 16,
@@ -1016,5 +1090,22 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     lineHeight: 18
-  }
+  },
+  mediaIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 6,
+  },
+  darkOverlayText: {
+    color: "#111111",
+    fontWeight: "600"
+  },
+  darkSubText: {
+    color: "#111111"
+  },
+  screenOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.25)"
+  },  
+
 });
