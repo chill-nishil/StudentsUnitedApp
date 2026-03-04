@@ -37,73 +37,76 @@ export default function CreateAccountScreen() {
     position.trim().toLowerCase() === "president";
 
   const handleCreateAccount = async () => {
-  console.log("CREATE ACCOUNT START");
+    console.log("CREATE ACCOUNT START");
 
-  if (!name || !email || !password || !position) {
-    alert("Please fill out all required fields");
-    return;
-  }
-
-  if (isPresident && !clubName) {
-    alert("Please enter your club name");
-    return;
-  }
-
-  try {
-    setLoading(true);
-
-    console.log("CREATING AUTH USER");
-
-    const cred = await createUserWithEmailAndPassword(
-      auth,
-      email,
-      password
-    );
-
-    const uid = cred.user.uid;
-    console.log("AUTH USER CREATED:", uid);
-
-    console.log("CREATING USER DOC");
-
-    await setDoc(doc(db, "users", uid), {
-      uid,
-      name,
-      email,
-      position,
-      clubName: isPresident ? clubName : null
-    });
-
-    console.log("USER DOC CREATED");
-
-    if (isPresident) {
-      console.log("CREATING CLUB");
-
-      const clubRef = await addDoc(collection(db, "clubs"), {
-        name: clubName,
-        presidentId: uid,
-        members: [uid],
-        joinRequests: []
-      });
-
-      console.log("CLUB CREATED:", clubRef.id);
-
-      await updateDoc(doc(db, "users", uid), {
-        clubId: clubRef.id,
-        clubName: clubName 
-      });
-
-      console.log("USER UPDATED WITH CLUB ID");
+    if (!name || !email || !password || !position) {
+      alert("Please fill out all required fields");
+      return;
     }
 
-    router.push(`/chat-room?uid=${uid}`);
-  } catch (e: any) {
-    console.error("CREATE ACCOUNT ERROR:", e);
-    alert(e.message);
-  } finally {
-    setLoading(false);
-  }
-};
+    if (isPresident && !clubName) {
+      alert("Please enter your club name");
+      return;
+    }
 
+    const normalizedClubName = isPresident
+      ? clubName.trim().toUpperCase()
+      : null;
+
+    try {
+      setLoading(true);
+
+      console.log("CREATING AUTH USER");
+
+      const cred = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+
+      const uid = cred.user.uid;
+      console.log("AUTH USER CREATED:", uid);
+
+      console.log("CREATING USER DOC");
+
+      await setDoc(doc(db, "users", uid), {
+        uid,
+        name,
+        email,
+        position,
+        clubName: normalizedClubName
+      });
+
+      console.log("USER DOC CREATED");
+
+      if (isPresident) {
+        console.log("CREATING CLUB");
+
+        const clubRef = await addDoc(collection(db, "clubs"), {
+          name: normalizedClubName,
+          presidentId: uid,
+          members: [uid],
+          joinRequests: []
+        });
+
+        console.log("CLUB CREATED:", clubRef.id);
+
+        await updateDoc(doc(db, "users", uid), {
+          clubId: clubRef.id,
+          clubName: normalizedClubName
+        });
+
+        console.log("USER UPDATED WITH CLUB ID");
+      }
+
+      router.push(`/chat-room?uid=${uid}`);
+    } catch (e: any) {
+      console.error("CREATE ACCOUNT ERROR:", e);
+      alert(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <KeyboardAvoidingView

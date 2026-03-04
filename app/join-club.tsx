@@ -53,14 +53,16 @@ export default function JoinClubScreen() {
     setError("");
     setClubResult(null);
 
-    if (!searchText.trim()) {
+    const normalizedSearch = searchText.trim().toUpperCase();
+
+    if (!normalizedSearch) {
       setError("Enter a club name");
       return;
     }
 
     const q = query(
       collection(db, "clubs"),
-      where("name", "==", searchText.trim())
+      where("name", "==", normalizedSearch)
     );
 
     const snap = await getDocs(q);
@@ -75,6 +77,7 @@ export default function JoinClubScreen() {
       ...snap.docs[0].data()
     });
   }
+
 
     async function sendJoinRequest() {
     if (!clubResult || !currentUid) return;

@@ -855,7 +855,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 14,
     marginBottom: 12,
-    color: "#555"
+    color: "#000000"
   },
 
   // ADDED: chat background wrappers
