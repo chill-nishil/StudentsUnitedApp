@@ -40,6 +40,7 @@ type Message = {
   id: string;
   message: string;
   senderName: string;
+  senderUid?: string; // ADDED
   position: string;
   createdAt: any;
   reactions?: {
@@ -203,6 +204,7 @@ export default function ChatScreen() {
           id: d.id,
           message: data.message,
           senderName: data.senderName,
+          senderUid: data.senderUid, // ADDED
           position: data.position,
           createdAt: data.createdAt,
           reactions: data.reactions || {},
@@ -292,6 +294,7 @@ export default function ChatScreen() {
       await addDoc(collection(db, "chats"), {
         message: hasText ? trimmed : "",
         senderName: userName,
+        senderUid: currentUid, // ADDED
         position: position,
         clubId: userClubId,
         createdAt: serverTimestamp(),
@@ -442,28 +445,28 @@ export default function ChatScreen() {
     setActiveMessageId(null);
   }
 
-  function confirmDeleteMessage(messageId: string, sender: string) {
-    if (!userClubId) return;
+  function confirmDeleteMessage(messageId: string, senderUid?: string) {
+  if (!userClubId) return;
+  if (!currentUid) return;
 
-    const canDelete = sender === userName || isPresident;
+  const canDelete = !!senderUid && senderUid === currentUid; // CHANGED
+  if (!canDelete) return;
 
-    if (!canDelete) return;
-
-    Alert.alert("Delete message?", "This will remove the message for everyone.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteDoc(doc(db, "chats", messageId));
-          } catch (e: any) {
-            console.log("DELETE_ERROR", e?.code, e?.message, e);
-          }
+  Alert.alert("Delete message?", "This will remove the message for everyone.", [
+    { text: "Cancel", style: "cancel" },
+    {
+      text: "Delete",
+      style: "destructive",
+      onPress: async () => {
+        try {
+          await deleteDoc(doc(db, "chats", messageId));
+        } catch (e: any) {
+          console.log("DELETE_ERROR", e?.code, e?.message, e);
         }
       }
-    ]);
-  }
+    }
+  ]);
+}
 
   const EMOJI_REGEX = /^\p{Extended_Pictographic}$/u;
 
@@ -503,7 +506,7 @@ export default function ChatScreen() {
           const prevDate = prev ? toDateSafe(prev.createdAt) : null;
           const showDayHeader = !!curDate && (!prevDate || !sameDay(curDate, prevDate));
 
-          const canDelete = item.senderName === userName || isPresident;
+          const canDelete = !!currentUid && !!item.senderUid && item.senderUid === currentUid; // CHANGED
 
           return (
             <View>
@@ -520,8 +523,11 @@ export default function ChatScreen() {
                 </View>
               )}
               <View style={[styles.messageGroup, item.senderName === userName ? styles.alignRight : styles.alignLeft]}>
-                <Pressable onLongPress={() => confirmDeleteMessage(item.id, item.senderName)} disabled={!canDelete}>
-                  <View style={[styles.message, item.senderName === userName ? styles.myMessage : styles.otherMessage]}>
+                <Pressable
+                  onLongPress={() => confirmDeleteMessage(item.id, item.senderUid)} // CHANGED
+                  disabled={!canDelete} // CHANGED
+                >                  
+                <View style={[styles.message, item.senderName === userName ? styles.myMessage : styles.otherMessage]}>
                     <Text style={styles.sender}>
                       {item.senderName} · {item.position}
                     </Text>
