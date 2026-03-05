@@ -146,6 +146,15 @@ export default function ChatScreen() {
 
   const hasBackground = !!chatBackgroundBase64;
 
+  // ADDED: pinned message state
+  const [pinnedMessageId, setPinnedMessageId] = useState<string | null>(null);
+  const [pinnedPreview, setPinnedPreview] = useState<string | null>(null);
+  const [pinnedSenderName, setPinnedSenderName] = useState<string | null>(null);
+  const [pinnedCreatedAt, setPinnedCreatedAt] = useState<any>(null);
+
+  // ADDED: FlatList ref to scroll to pinned message
+  const listRef = useRef<FlatList<Message>>(null);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, user => {
       setCurrentUid(user ? user.uid : null);
@@ -231,6 +240,12 @@ export default function ChatScreen() {
 
       // ADDED: background image from club doc
       setChatBackgroundBase64(data.chatBackgroundBase64 || null);
+
+      // ADDED: pinned message from club doc
+      setPinnedMessageId(data.pinnedMessageId || null);
+      setPinnedPreview(data.pinnedPreview || null);
+      setPinnedSenderName(data.pinnedSenderName || null);
+      setPinnedCreatedAt(data.pinnedCreatedAt || null);
 
       const requests = data.joinRequests || [];
 
@@ -446,26 +461,111 @@ export default function ChatScreen() {
   }
 
   function confirmDeleteMessage(messageId: string, senderUid?: string) {
-  if (!userClubId) return;
-  if (!currentUid) return;
+    if (!userClubId) return;
+    if (!currentUid) return;
 
-  const canDelete = !!senderUid && senderUid === currentUid; // CHANGED
-  if (!canDelete) return;
+    const canDelete = !!senderUid && senderUid === currentUid; // CHANGED
+    if (!canDelete) return;
 
-  Alert.alert("Delete message?", "This will remove the message for everyone.", [
-    { text: "Cancel", style: "cancel" },
-    {
-      text: "Delete",
-      style: "destructive",
-      onPress: async () => {
-        try {
-          await deleteDoc(doc(db, "chats", messageId));
-        } catch (e: any) {
-          console.log("DELETE_ERROR", e?.code, e?.message, e);
+    Alert.alert("Delete message?", "This will remove the message for everyone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, "chats", messageId));
+          } catch (e: any) {
+            console.log("DELETE_ERROR", e?.code, e?.message, e);
+          }
         }
       }
+    ]);
+  }
+
+  // ADDED: pin helpers
+  async function pinMessage(item: Message) {
+  if (!userClubId) return;
+  if (!isPresident) return;
+
+  const clubRef = doc(db, "clubs", userClubId);
+
+  const textPreview = (item.message || "").trim();
+  const mediaOnlyPreview = item.mediaBase64 ? "Photo" : "";
+  const preview = textPreview ? textPreview : mediaOnlyPreview;
+
+  try {
+    await updateDoc(clubRef, {
+      pinnedMessageId: item.id,
+      pinnedPreview: preview,
+      pinnedSenderName: item.senderName,
+      pinnedCreatedAt: item.createdAt
+    });
+  } catch (e: any) {
+    console.log("PIN_ERROR", e?.code, e?.message, e);
+  }
+  }
+
+  async function unpinMessage() {
+    if (!userClubId) return;
+    if (!isPresident) return;
+
+    const clubRef = doc(db, "clubs", userClubId);
+
+    try {
+      await updateDoc(clubRef, {
+        pinnedMessageId: null,
+        pinnedPreview: null,
+        pinnedSenderName: null
+      });
+    } catch (e: any) {
+      console.log("UNPIN_ERROR", e?.code, e?.message, e);
     }
-  ]);
+  }
+
+  function scrollToPinned() {
+    if (!pinnedMessageId) return;
+
+    const idx = messages.findIndex(m => m.id === pinnedMessageId);
+    if (idx < 0) return;
+
+    try {
+      listRef.current?.scrollToIndex({ index: idx, animated: true });
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  function handleMessageLongPress(item: Message, canDelete: boolean) {
+  if (isPresident) {
+    const isPinned = !!pinnedMessageId && pinnedMessageId === item.id;
+
+    Alert.alert(
+      "Chat Options",
+      "",
+      [
+        {
+          text: isPinned ? "Unpin" : "Pin",
+          onPress: () => {
+            if (isPinned) {
+              unpinMessage();
+            } else {
+              pinMessage(item);
+            }
+          }
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => confirmDeleteMessage(item.id, item.senderUid)
+        },
+        { text: "Cancel", style: "cancel" }
+      ]
+    );
+    return;
+  }
+
+  confirmDeleteMessage(item.id, item.senderUid);
 }
 
   const EMOJI_REGEX = /^\p{Extended_Pictographic}$/u;
@@ -492,12 +592,57 @@ export default function ChatScreen() {
 
   const ChatBody = (
     <View style={{ flex: 1 }}>
+      {!!pinnedMessageId && (
+        <Pressable style={styles.pinnedWrap} onPress={scrollToPinned}>
+          <View style={styles.pinnedLeftBar} />
+
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text
+                style={[
+                  styles.pinnedTitle,
+                  hasBackground && styles.darkOverlayText
+                ]}
+                numberOfLines={1}
+              >
+                Pinned message:
+              </Text>
+
+              {!!pinnedCreatedAt && (
+                <Text
+                  style={[
+                    styles.pinnedTimeText,
+                    hasBackground && styles.darkSubText
+                  ]}
+                >
+                  {formatTime(pinnedCreatedAt)}
+                </Text>
+              )}
+            </View>
+
+            <Text
+              style={[
+                styles.pinnedText,
+                hasBackground && styles.darkSubText
+              ]}
+              numberOfLines={1}
+            >
+              {(pinnedSenderName ? pinnedSenderName + ": " : "") + (pinnedPreview || "")}
+            </Text>
+          </View>
+        </Pressable>
+      )}
+
       <FlatList
+        ref={listRef}
         data={messages}
         keyExtractor={item => item.id}
         contentContainerStyle={{ paddingBottom: 16 }}
         style={{ flex: 1 }}
         keyboardShouldPersistTaps="handled"
+        onScrollToIndexFailed={() => {
+          // ignore
+        }}
         renderItem={({ item, index }) => {
           const timeLabel = formatTime(item.createdAt);
 
@@ -507,6 +652,7 @@ export default function ChatScreen() {
           const showDayHeader = !!curDate && (!prevDate || !sameDay(curDate, prevDate));
 
           const canDelete = !!currentUid && !!item.senderUid && item.senderUid === currentUid; // CHANGED
+          const isPinnedRow = !!pinnedMessageId && pinnedMessageId === item.id;
 
           return (
             <View>
@@ -524,10 +670,16 @@ export default function ChatScreen() {
               )}
               <View style={[styles.messageGroup, item.senderName === userName ? styles.alignRight : styles.alignLeft]}>
                 <Pressable
-                  onLongPress={() => confirmDeleteMessage(item.id, item.senderUid)} // CHANGED
-                  disabled={!canDelete} // CHANGED
-                >                  
-                <View style={[styles.message, item.senderName === userName ? styles.myMessage : styles.otherMessage]}>
+                  onLongPress={() => handleMessageLongPress(item, canDelete)}
+                  disabled={!canDelete && !isPresident}
+                >
+                  <View
+                    style={[
+                      styles.message,
+                      item.senderName === userName ? styles.myMessage : styles.otherMessage,
+                      isPinnedRow && styles.pinnedMessageOutline
+                    ]}
+                  >
                     <Text style={styles.sender}>
                       {item.senderName} · {item.position}
                     </Text>
@@ -558,28 +710,28 @@ export default function ChatScreen() {
                       }, 50);
                     }}
                   >
-                  <Text
-                    style={[
-                      styles.reactText,
-                      hasBackground && styles.darkSubText
-                    ]}
-                  >
-                    {showEmojiPicker && activeMessageId === item.id
-                      ? "Select an emoji from keyboard"
-                      : "😊 React"}
-                  </Text>
-                </Pressable>
+                    <Text
+                      style={[
+                        styles.reactText,
+                        hasBackground && styles.darkSubText
+                      ]}
+                    >
+                      {showEmojiPicker && activeMessageId === item.id
+                        ? "Select an emoji from keyboard"
+                        : "😊 React"}
+                    </Text>
+                  </Pressable>
 
-                {!!timeLabel && (
-                  <Text
-                    style={[
-                      styles.reactTimeText,
-                      hasBackground && styles.darkSubText
-                    ]}
-                  >
-                    {timeLabel}
-                  </Text>
-                )}                
+                  {!!timeLabel && (
+                    <Text
+                      style={[
+                        styles.reactTimeText,
+                        hasBackground && styles.darkSubText
+                      ]}
+                    >
+                      {timeLabel}
+                    </Text>
+                  )}
                 </View>
 
                 {item.reactions &&
@@ -729,9 +881,9 @@ export default function ChatScreen() {
           <View style={styles.row}>
             <Pressable style={styles.mediaButton} onPress={pickMedia} disabled={isPickingMedia || isSending}>
               <Image
-              source={require("../assets/images/imageGraphic.jpg")}
-              style={styles.mediaIcon}
-              resizeMode="contain"
+                source={require("../assets/images/imageGraphic.jpg")}
+                style={styles.mediaIcon}
+                resizeMode="contain"
               />
             </Pressable>
 
@@ -753,102 +905,102 @@ export default function ChatScreen() {
   );
 
   return (
-  <KeyboardAvoidingView
-    style={{ flex: 1 }}
-    behavior={Platform.OS === "ios" ? "padding" : "height"}
-    keyboardVerticalOffset={80}
-  >
-    {!!chatBackgroundBase64 ? (
-      <ImageBackground
-        source={{ uri: `data:image/jpeg;base64,${chatBackgroundBase64}` }}
-        style={{ flex: 1 }}
-        resizeMode="cover"
-      >
-        <View style={styles.screenOverlay}>
-          <View style={[styles.container, { backgroundColor: "transparent" }]}>
-            <Text style={styles.clubHeader}>{clubName}</Text>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={80}
+    >
+      {!!chatBackgroundBase64 ? (
+        <ImageBackground
+          source={{ uri: `data:image/jpeg;base64,${chatBackgroundBase64}` }}
+          style={{ flex: 1 }}
+          resizeMode="cover"
+        >
+          <View style={styles.screenOverlay}>
+            <View style={[styles.container, { backgroundColor: "transparent" }]}>
+              <Text style={styles.clubHeader}>{clubName}</Text>
 
-            <Text style={styles.userHeader}>
-              {userName} · {position}
-            </Text>
+              <Text style={styles.userHeader}>
+                {userName} · {position}
+              </Text>
 
-            <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
-              <Pressable style={styles.openCalendarButton} onPress={() => router.push("/calendar")}>
-                <Text style={styles.openCalendarText}>Add Event</Text>
-              </Pressable>
+              {/* <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
+                <Pressable style={styles.openCalendarButton} onPress={() => router.push("/calendar")}>
+                  <Text style={styles.openCalendarText}>Add Event</Text>
+                </Pressable>
+
+                {isPresident && (
+                  <Pressable style={styles.openCalendarButton} onPress={() => setShowRequestsModal(true)}>
+                    <Text style={styles.openCalendarText}>Join Requests</Text>
+                  </Pressable>
+                )}
+              </View>
 
               {isPresident && (
-                <Pressable style={styles.openCalendarButton} onPress={() => setShowRequestsModal(true)}>
-                  <Text style={styles.openCalendarText}>Join Requests</Text>
-                </Pressable>
-              )}
+                <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
+                  <Pressable
+                    style={styles.openCalendarButton}
+                    onPress={pickChatBackground}
+                    disabled={isPickingBackground}
+                  >
+                    <Text style={styles.openCalendarText}>{isPickingBackground ? "..." : "Chat Background"}</Text>
+                  </Pressable>
+
+                  <Pressable style={styles.openCalendarButton} onPress={clearChatBackground}>
+                    <Text style={styles.openCalendarText}>Remove Background</Text>
+                  </Pressable>
+                </View>
+              )} */}
+
+              <View style={styles.chatArea}>{ChatBody}</View>
             </View>
+          </View>
+        </ImageBackground>
+      ) : (
+        <View style={styles.container}>
+          <Text style={styles.clubHeader}>{clubName}</Text>
+
+          <Text style={styles.userHeader}>
+            {userName} · {position}
+          </Text>
+
+          <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
+            <Pressable style={styles.openCalendarButton} onPress={() => router.push("/calendar")}>
+              <Text style={styles.openCalendarText}>Add Event</Text>
+            </Pressable>
 
             {isPresident && (
-              <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
-                <Pressable
-                  style={styles.openCalendarButton}
-                  onPress={pickChatBackground}
-                  disabled={isPickingBackground}
-                >
-                  <Text style={styles.openCalendarText}>{isPickingBackground ? "..." : "Chat Background"}</Text>
-                </Pressable>
+              <Pressable style={styles.openCalendarButton} onPress={() => setShowRequestsModal(true)}>
+                <Text style={styles.openCalendarText}>Join Requests</Text>
+              </Pressable>
+            )}
+          </View>
 
+          {isPresident && (
+            <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
+              <Pressable style={styles.openCalendarButton} onPress={pickChatBackground} disabled={isPickingBackground}>
+                <Text style={styles.openCalendarText}>{isPickingBackground ? "..." : "Chat Background"}</Text>
+              </Pressable>
+
+              {!!chatBackgroundBase64 && (
                 <Pressable style={styles.openCalendarButton} onPress={clearChatBackground}>
                   <Text style={styles.openCalendarText}>Remove Background</Text>
                 </Pressable>
-              </View>
-            )}
-
-            <View style={styles.chatArea}>{ChatBody}</View>
-          </View>
-        </View>
-      </ImageBackground>
-    ) : (
-      <View style={styles.container}>
-        <Text style={styles.clubHeader}>{clubName}</Text>
-
-        <Text style={styles.userHeader}>
-          {userName} · {position}
-        </Text>
-
-        <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
-          <Pressable style={styles.openCalendarButton} onPress={() => router.push("/calendar")}>
-            <Text style={styles.openCalendarText}>Add Event</Text>
-          </Pressable>
-
-          {isPresident && (
-            <Pressable style={styles.openCalendarButton} onPress={() => setShowRequestsModal(true)}>
-              <Text style={styles.openCalendarText}>Join Requests</Text>
-            </Pressable>
+              )}
+            </View>
           )}
+
+          <View style={styles.chatArea}>{ChatBody}</View>
         </View>
-
-        {isPresident && (
-          <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
-            <Pressable style={styles.openCalendarButton} onPress={pickChatBackground} disabled={isPickingBackground}>
-              <Text style={styles.openCalendarText}>{isPickingBackground ? "..." : "Chat Background"}</Text>
-            </Pressable>
-
-            {!!chatBackgroundBase64 && (
-              <Pressable style={styles.openCalendarButton} onPress={clearChatBackground}>
-                <Text style={styles.openCalendarText}>Remove Background</Text>
-              </Pressable>
-            )}
-          </View>
-        )}
-
-        <View style={styles.chatArea}>{ChatBody}</View>
-      </View>
-    )}
-  </KeyboardAvoidingView>
-);
+      )}
+    </KeyboardAvoidingView>
+  );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
+    padding: 10,
     backgroundColor: "white"
   },
   clubHeader: {
@@ -860,7 +1012,7 @@ const styles = StyleSheet.create({
   userHeader: {
     textAlign: "center",
     fontSize: 14,
-    marginBottom: 12,
+    marginBottom: 8,
     color: "#000000"
   },
 
@@ -880,6 +1032,49 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.35)"
   },
 
+  // ADDED: pinned banner styles
+  pinnedWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 10,
+    borderWidth: 1,
+    minHeight:45,
+    borderColor: "#E5E7EB",
+    backgroundColor: "rgba(255,255,255,0.85)",
+    marginBottom: 10,
+    overflow: "hidden"
+  },
+  pinnedLeftBar: {
+    width: 6,
+    alignSelf: "stretch",
+    backgroundColor: "#224bc5"
+  },
+  pinnedContent: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12
+  },
+  pinnedTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 2,
+    marginLeft:4
+  },
+  pinnedText: {
+    fontSize: 12,
+    color: "#374151",
+    marginLeft:4
+  },
+  pinnedMessageOutline: {
+    borderWidth: 2,
+    borderColor: "#224bc5"
+  },
+  pinnedTimeText: {
+    marginRight: 8,
+    fontSize: 11,
+    color: "#000000"
+  },
   dayHeaderWrap: {
     alignItems: "center",
     marginTop: 10,
@@ -1008,7 +1203,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "center"
   },
   addReactionText: {
     fontSize: 16,
@@ -1047,7 +1242,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "#6B7280"
   },
-
   mediaButton: {
     height: 48,
     width: 48,
@@ -1100,7 +1294,7 @@ const styles = StyleSheet.create({
   mediaIcon: {
     width: 44,
     height: 44,
-    borderRadius: 6,
+    borderRadius: 6
   },
   darkOverlayText: {
     color: "#111111",
@@ -1112,6 +1306,5 @@ const styles = StyleSheet.create({
   screenOverlay: {
     flex: 1,
     backgroundColor: "rgba(255,255,255,0.25)"
-  },  
-
+  }
 });
