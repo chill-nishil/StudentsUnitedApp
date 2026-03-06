@@ -1,3 +1,4 @@
+import BLOCKED_WORDS from "@/blockedWords";
 import { db } from "@/FirebaseConfig";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
@@ -106,6 +107,18 @@ function formatDayHeader(d: Date): string {
     month: "short",
     day: "numeric"
   });
+}
+
+function containsProfanity(text: string): boolean {
+  const normalized = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const words = normalized.split(" ").filter(Boolean);
+
+  return words.some(word => BLOCKED_WORDS.includes(word));
 }
 
 export default function ChatScreen() {
@@ -297,6 +310,14 @@ export default function ChatScreen() {
     const hasMedia = !!pendingMediaBase64;
 
     if (!hasText && !hasMedia) return;
+
+    if (hasText && containsProfanity(trimmed)) {
+      Alert.alert(
+        "Profanity Check",
+        "Inappropriate language is not allowed!"
+      );
+      return;
+    }
 
     const prevInput = input;
     const prevMedia = pendingMediaBase64;
