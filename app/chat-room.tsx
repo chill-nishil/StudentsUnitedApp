@@ -461,27 +461,29 @@ export default function ChatScreen() {
   }
 
   function confirmDeleteMessage(messageId: string, senderUid?: string) {
-    if (!userClubId) return;
-    if (!currentUid) return;
+  if (!userClubId) return;
+  if (!currentUid) return;
 
-    const canDelete = !!senderUid && senderUid === currentUid; // CHANGED
-    if (!canDelete) return;
+  const isOwnMessage = !!senderUid && senderUid === currentUid;
+  const canDelete = isPresident || isOwnMessage;
 
-    Alert.alert("Delete message?", "This will remove the message for everyone.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await deleteDoc(doc(db, "chats", messageId));
-          } catch (e: any) {
-            console.log("DELETE_ERROR", e?.code, e?.message, e);
-          }
+  if (!canDelete) return;
+
+  Alert.alert("Delete message?", "This will remove the message for everyone.", [
+    { text: "Cancel", style: "cancel" },
+    {
+      text: "Delete",
+      style: "destructive",
+      onPress: async () => {
+        try {
+          await deleteDoc(doc(db, "chats", messageId));
+        } catch (e: any) {
+          console.log("DELETE_ERROR", e?.code, e?.message, e);
         }
       }
-    ]);
-  }
+    }
+  ]);
+}
 
   // ADDED: pin helpers
   async function pinMessage(item: Message) {
@@ -651,7 +653,7 @@ export default function ChatScreen() {
           const prevDate = prev ? toDateSafe(prev.createdAt) : null;
           const showDayHeader = !!curDate && (!prevDate || !sameDay(curDate, prevDate));
 
-          const canDelete = !!currentUid && !!item.senderUid && item.senderUid === currentUid; // CHANGED
+          const canDelete = isPresident || (!!currentUid && !!item.senderUid && item.senderUid === currentUid);
           const isPinnedRow = !!pinnedMessageId && pinnedMessageId === item.id;
 
           return (
@@ -671,7 +673,7 @@ export default function ChatScreen() {
               <View style={[styles.messageGroup, item.senderName === userName ? styles.alignRight : styles.alignLeft]}>
                 <Pressable
                   onLongPress={() => handleMessageLongPress(item, canDelete)}
-                  disabled={!canDelete && !isPresident}
+                  disabled={!canDelete}
                 >
                   <View
                     style={[
