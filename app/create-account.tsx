@@ -33,8 +33,7 @@ export default function CreateAccountScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const isPresident =
-    position.trim().toLowerCase() === "president";
+  const isPresident = position.trim().toLowerCase() === "president";
 
   const handleCreateAccount = async () => {
     console.log("CREATE ACCOUNT START");
@@ -49,20 +48,14 @@ export default function CreateAccountScreen() {
       return;
     }
 
-    const normalizedClubName = isPresident
-      ? clubName.trim().toUpperCase()
-      : null;
+    const normalizedClubName = isPresident ? clubName.trim().toUpperCase() : null;
 
     try {
       setLoading(true);
 
       console.log("CREATING AUTH USER");
 
-      const cred = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
 
       const uid = cred.user.uid;
       console.log("AUTH USER CREATED:", uid);
@@ -74,7 +67,10 @@ export default function CreateAccountScreen() {
         name,
         email,
         position,
-        clubName: normalizedClubName
+        clubName: normalizedClubName,
+        clubIds: [],
+        clubNames: [],
+        pendingClubRequests: []
       });
 
       console.log("USER DOC CREATED");
@@ -93,14 +89,17 @@ export default function CreateAccountScreen() {
 
         await updateDoc(doc(db, "users", uid), {
           clubId: clubRef.id,
-          clubName: normalizedClubName
+          clubName: normalizedClubName,
+          clubIds: [clubRef.id],
+          clubNames: [normalizedClubName],
+          pendingClubRequests: []
         });
 
         console.log("USER UPDATED WITH CLUB ID");
       }
 
-      router.push(`/chat-room?uid=${uid}`);
-    } catch (e: any) {
+      router.push("/chat-dashboard");    
+      } catch (e: any) {
       console.error("CREATE ACCOUNT ERROR:", e);
       alert(e.message);
     } finally {
@@ -162,7 +161,7 @@ export default function CreateAccountScreen() {
           </View>
 
           <TextInput
-            placeholder="Position (e.g. President, Treasurer)"
+            placeholder="Position (e.g. President, Member)"
             placeholderTextColor="#6B7280"
             value={position}
             onChangeText={setPosition}

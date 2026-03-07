@@ -40,7 +40,7 @@ export default function SignInScreen() {
         return;
       }
 
-      router.push(`/chat-room?uid=${cred.user.uid}`);
+    router.push("/chat-dashboard");
     } catch (e) {
       alert("Invalid email or password");
     } finally {

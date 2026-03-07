@@ -2,7 +2,7 @@ import BLOCKED_WORDS from "@/blockedWords";
 import { db } from "@/FirebaseConfig";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import {
   addDoc,
@@ -168,6 +168,10 @@ export default function ChatScreen() {
   // ADDED: FlatList ref to scroll to pinned message
   const listRef = useRef<FlatList<Message>>(null);
 
+  const params = useLocalSearchParams<{ clubId?: string; clubName?: string }>();
+  const selectedClubId = typeof params.clubId === "string" ? params.clubId : null;
+  const selectedClubName = typeof params.clubName === "string" ? params.clubName : null;
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, user => {
       setCurrentUid(user ? user.uid : null);
@@ -188,28 +192,31 @@ export default function ChatScreen() {
   }, [showEmojiPicker]);
 
   useEffect(() => {
-    if (!currentUid) return;
+  if (!currentUid) return;
 
-    const q = query(collection(db, "users"), where("uid", "==", currentUid));
+  const userRef = doc(db, "users", currentUid);
 
-    const unsub = onSnapshot(q, snap => {
-      if (snap.empty) return;
+  const unsub = onSnapshot(userRef, snap => {
+    if (!snap.exists()) return;
 
-      const data = snap.docs[0].data();
+    const data = snap.data();
 
-      setUserName(data.name);
-      setPosition(data.position);
+    setUserName(data.name || "");
+    setPosition(data.position || "");
+
+    if (selectedClubId) {
+      setUserClubId(selectedClubId);
+      setClubName(selectedClubName || "Club Chat");
+    } else if (data.clubId) {
+      setUserClubId(data.clubId);
       setClubName(data.clubName || "Club Chat");
+    } else {
+      router.replace(`/join-club?uid=${currentUid}`);
+    }
+  });
 
-      if (!data.clubId) {
-        router.replace(`/join-club?uid=${currentUid}`);
-      } else {
-        setUserClubId(data.clubId);
-      }
-    });
-
-    return unsub;
-  }, [currentUid]);
+  return unsub;
+}, [currentUid, selectedClubId, selectedClubName]);
 
   useEffect(() => {
     if (!userClubId) return;
@@ -275,76 +282,101 @@ export default function ChatScreen() {
   }, [userClubId, currentUid]);
 
   async function acceptJoinRequest(requestUid: string) {
-    if (!userClubId) return;
+  if (!userClubId) return;
+  if (!clubName) return;
 
-    const clubRef = doc(db, "clubs", userClubId);
-    const userRef = doc(db, "users", requestUid);
+  const clubRef = doc(db, "clubs", userClubId);
+  const userRef = doc(db, "users", requestUid);
 
-    await updateDoc(clubRef, {
-      members: arrayUnion(requestUid),
-      joinRequests: arrayRemove(requestUid)
-    });
+  await updateDoc(clubRef, {
+    members: arrayUnion(requestUid),
+    joinRequests: arrayRemove(requestUid)
+  });
 
-    await updateDoc(userRef, {
-      clubId: userClubId,
-      clubName: clubName
-    });
-  }
+  await updateDoc(userRef, {
+    clubIds: arrayUnion(userClubId),
+    clubNames: arrayUnion(clubName),
+    pendingClubRequests: arrayRemove(userClubId),
+
+    clubId: userClubId,
+    clubName: clubName
+  });
+}
 
   async function rejectJoinRequest(requestUid: string) {
-    if (!userClubId) return;
+  if (!userClubId) return;
+
+  const clubRef = doc(db, "clubs", userClubId);
+  const userRef = doc(db, "users", requestUid);
+
+  await updateDoc(clubRef, {
+    joinRequests: arrayRemove(requestUid)
+  });
+
+  await updateDoc(userRef, {
+    pendingClubRequests: arrayRemove(userClubId)
+  });
+}
+
+  async function sendMessage() {
+  if (!userName || !userClubId) return;
+  if (isSending) return;
+
+  const trimmed = input.trim();
+  const hasText = !!trimmed;
+  const hasMedia = !!pendingMediaBase64;
+
+  if (!hasText && !hasMedia) return;
+
+  if (hasText && containsProfanity(trimmed)) {
+    Alert.alert(
+      "Profanity Check",
+      "Inappropriate language is not allowed!"
+    );
+    return;
+  }
+
+  const prevInput = input;
+  const prevMedia = pendingMediaBase64;
+
+  setIsSending(true);
+  setInput("");
+  setPendingMediaBase64(null);
+
+  try {
+    await addDoc(collection(db, "chats"), {
+      message: hasText ? trimmed : "",
+      senderName: userName,
+      senderUid: currentUid,
+      position: position,
+      clubId: userClubId,
+      createdAt: serverTimestamp(),
+      reactions: {},
+      ...(hasMedia ? { mediaBase64: prevMedia } : {})
+    });
 
     const clubRef = doc(db, "clubs", userClubId);
 
+    let previewText = "";
+    if (hasText) {
+      previewText = trimmed;
+    } else if (hasMedia) {
+      previewText = "Photo";
+    }
+
     await updateDoc(clubRef, {
-      joinRequests: arrayRemove(requestUid)
+      lastMessage: previewText,
+      lastMessageSender: userName,
+      lastMessageTime: serverTimestamp()
     });
+  } catch (e: any) {
+    console.log("SEND_ERROR", e?.code, e?.message, e);
+    setInput(prevInput);
+    setPendingMediaBase64(prevMedia);
+  } finally {
+    setIsSending(false);
   }
-
-  async function sendMessage() {
-    if (!userName || !userClubId) return;
-    if (isSending) return;
-
-    const trimmed = input.trim();
-    const hasText = !!trimmed;
-    const hasMedia = !!pendingMediaBase64;
-
-    if (!hasText && !hasMedia) return;
-
-    if (hasText && containsProfanity(trimmed)) {
-      Alert.alert(
-        "Profanity Check",
-        "Inappropriate language is not allowed!"
-      );
-      return;
-    }
-
-    const prevInput = input;
-    const prevMedia = pendingMediaBase64;
-
-    setIsSending(true);
-    setInput("");
-    setPendingMediaBase64(null);
-
-    try {
-      await addDoc(collection(db, "chats"), {
-        message: hasText ? trimmed : "",
-        senderName: userName,
-        senderUid: currentUid, // ADDED
-        position: position,
-        clubId: userClubId,
-        createdAt: serverTimestamp(),
-        reactions: {},
-        ...(hasMedia ? { mediaBase64: prevMedia } : {})
-      });
-    } catch (e: any) {
-      console.log("SEND_ERROR", e?.code, e?.message, e);
-      setInput(prevInput);
-      setPendingMediaBase64(prevMedia);
-    } finally {
-      setIsSending(false);
-    }
-  }
+}
 
   async function pickMedia() {
     if (isPickingMedia) return;
@@ -947,7 +979,7 @@ export default function ChatScreen() {
                 {userName} · {position}
               </Text>
 
-              {/* <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
+              <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
                 <Pressable style={styles.openCalendarButton} onPress={() => router.push("/calendar")}>
                   <Text style={styles.openCalendarText}>Add Event</Text>
                 </Pressable>
@@ -973,7 +1005,7 @@ export default function ChatScreen() {
                     <Text style={styles.openCalendarText}>Remove Background</Text>
                   </Pressable>
                 </View>
-              )} */}
+              )}
 
               <View style={styles.chatArea}>{ChatBody}</View>
             </View>

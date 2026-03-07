@@ -1,5 +1,4 @@
 import { db } from "@/FirebaseConfig";
-import { router } from "expo-router";
 import { getAuth } from "firebase/auth";
 import {
   arrayUnion,
@@ -27,28 +26,26 @@ export default function JoinClubScreen() {
   const [searchText, setSearchText] = useState("");
   const [clubResult, setClubResult] = useState<any | null>(null);
   const [error, setError] = useState("");
-  const [requestSent, setRequestSent] = useState(false);
+  const [joinedClubIds, setJoinedClubIds] = useState<string[]>([]);
+  const [pendingClubRequests, setPendingClubRequests] = useState<string[]>([]);
 
   useEffect(() => {
     if (!currentUid) return;
-  
+
     const q = query(collection(db, "users"), where("uid", "==", currentUid));
-  
+
     const unsub = onSnapshot(q, snap => {
       if (snap.empty) return;
-  
+
       const data = snap.docs[0].data();
-  
-      if (data.clubId) {
-        router.replace({
-          pathname: "/chat-room",
-          params: { currentUid }
-        });    }
+
+      setJoinedClubIds(data.clubIds || []);
+      setPendingClubRequests(data.pendingClubRequests || []);
     });
-  
+
     return unsub;
   }, [currentUid]);
-  
+
   async function searchClub() {
     setError("");
     setClubResult(null);
@@ -78,19 +75,38 @@ export default function JoinClubScreen() {
     });
   }
 
-
-    async function sendJoinRequest() {
+  async function sendJoinRequest() {
     if (!clubResult || !currentUid) return;
 
+    if (joinedClubIds.includes(clubResult.id)) {
+      setError("You are already in this club");
+      return;
+    }
+
+    if (pendingClubRequests.includes(clubResult.id)) {
+      setError("You already sent a request to this club");
+      return;
+    }
+
     const clubRef = doc(db, "clubs", clubResult.id);
+    const userRef = doc(db, "users", currentUid);
 
     await updateDoc(clubRef, {
-        joinRequests: arrayUnion(currentUid)
+      joinRequests: arrayUnion(currentUid)
     });
 
-    setRequestSent(true);
-    }   
+    await updateDoc(userRef, {
+      pendingClubRequests: arrayUnion(clubResult.id)
+    });
 
+    setError("");
+  }
+
+  const currentClubAlreadyRequested =
+    !!clubResult && pendingClubRequests.includes(clubResult.id);
+
+  const currentClubAlreadyJoined =
+    !!clubResult && joinedClubIds.includes(clubResult.id);
 
   return (
     <View style={styles.container}>
@@ -102,32 +118,35 @@ export default function JoinClubScreen() {
         onChangeText={setSearchText}
         style={styles.input}
       />
-      <Pressable style={styles.searchButton} onPress={searchClub}>
-            <Text style={styles.searchText}>Search</Text>
-        </Pressable>
 
+      <Pressable style={styles.searchButton} onPress={searchClub}>
+        <Text style={styles.searchText}>Search</Text>
+      </Pressable>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        {clubResult && (
-    <View style={styles.result}>
-        <Text style={styles.clubName}>{clubResult.name}</Text>
+      {clubResult && (
+        <View style={styles.result}>
+          <Text style={styles.clubName}>{clubResult.name}</Text>
 
-        {requestSent ? (
-        <Text style={styles.pendingText}>
-            Request sent. Waiting for approval.
-        </Text>
-        ) : (
-        <Pressable
-            style={styles.joinButton}
-            onPress={sendJoinRequest}
-        >
-            <Text style={styles.joinText}>Send Join Request</Text>
-        </Pressable>
-        )}
-    </View>
-    )}
-
+          {currentClubAlreadyJoined ? (
+            <Text style={styles.pendingText}>
+              You are already in this club.
+            </Text>
+          ) : currentClubAlreadyRequested ? (
+            <Text style={styles.pendingText}>
+              Request sent. Waiting for approval.
+            </Text>
+          ) : (
+            <Pressable
+              style={styles.joinButton}
+              onPress={sendJoinRequest}
+            >
+              <Text style={styles.joinText}>Send Join Request</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -150,16 +169,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     marginBottom: 12
-  },
-  button: {
-    backgroundColor: "#7b97d4",
-    padding: 12,
-    borderRadius: 8
-  },
-  buttonText: {
-    color: "white",
-    textAlign: "center",
-    fontWeight: "600"
   },
   error: {
     marginTop: 12,
@@ -188,20 +197,20 @@ const styles = StyleSheet.create({
     textAlign: "center"
   },
   pendingText: {
-  marginTop: 12,
-  textAlign: "center",
-  color: "#6B7280",
-  fontSize: 14 
+    marginTop: 12,
+    textAlign: "center",
+    color: "#6B7280",
+    fontSize: 14
   },
   searchButton: {
-  backgroundColor: "#7b97d4",
-  padding: 12,
-  borderRadius: 8,
-  marginBottom: 12
-},
-searchText: {
-color: "white",
-textAlign: "center",
-fontWeight: "600"
-}
+    backgroundColor: "#7b97d4",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12
+  },
+  searchText: {
+    color: "white",
+    textAlign: "center",
+    fontWeight: "600"
+  }
 });
