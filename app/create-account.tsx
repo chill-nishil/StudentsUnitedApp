@@ -100,7 +100,7 @@ export default function CreateAccountScreen() {
         console.log("USER UPDATED WITH CLUB ID");
       }
 
-      router.push("/chat-dashboard");    
+      router.push(`/chat-room?uid=${uid}`);
       } catch (e: any) {
       console.error("CREATE ACCOUNT ERROR:", e);
       alert(e.message);
