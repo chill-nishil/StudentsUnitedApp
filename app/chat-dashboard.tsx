@@ -1,7 +1,7 @@
 import { db } from "@/FirebaseConfig";
 import { router } from "expo-router";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
   FlatList,
@@ -53,12 +53,103 @@ function formatChatTime(value: any): string {
   }
 }
 
+function isUnread(lastMessageTime: any, lastReadTime: any): boolean {
+  const messageDate =
+    lastMessageTime && typeof lastMessageTime?.toDate === "function"
+      ? lastMessageTime.toDate()
+      : lastMessageTime instanceof Date
+      ? lastMessageTime
+      : null;
+
+  const readDate =
+    lastReadTime && typeof lastReadTime?.toDate === "function"
+      ? lastReadTime.toDate()
+      : lastReadTime instanceof Date
+      ? lastReadTime
+      : null;
+
+  if (!messageDate) return false;
+  if (!readDate) return true;
+
+  return messageDate.getTime() > readDate.getTime();
+}
+
 export default function ChatRoomsScreen() {
   const auth = getAuth();
 
   const [currentUid, setCurrentUid] = useState<string | null>(null);
   const [rooms, setRooms] = useState<ChatRoomItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [lastReadByClub, setLastReadByClub] = useState<Record<string, any>>({});
+
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+  if (!currentUid || rooms.length === 0) {
+    setUnreadCounts({});
+    return;
+  }
+
+  const unsubscribers: (() => void)[] = [];
+
+  rooms.forEach(room => {
+    const lastReadTime = lastReadByClub[room.id];
+
+    let chatsQuery;
+
+    if (lastReadTime) {
+      chatsQuery = query(
+        collection(db, "chats"),
+        where("clubId", "==", room.id),
+        where("createdAt", ">", lastReadTime)
+      );
+    } else {
+      chatsQuery = query(
+        collection(db, "chats"),
+        where("clubId", "==", room.id)
+      );
+    }
+
+    const unsub = onSnapshot(chatsQuery, snap => {
+      let count = 0;
+
+      snap.docs.forEach(d => {
+        const data = d.data();
+
+        if (data.senderUid !== currentUid) {
+          count += 1;
+        }
+      });
+
+      setUnreadCounts(prev => ({
+        ...prev,
+        [room.id]: count
+      }));
+    });
+
+    unsubscribers.push(unsub);
+  });
+
+  return () => {
+    unsubscribers.forEach(unsub => unsub());
+  };
+}, [currentUid, rooms, lastReadByClub]);
+
+  useEffect(() => {
+  if (!currentUid) return;
+
+  const userRef = doc(db, "users", currentUid);
+
+  const unsub = onSnapshot(userRef, snap => {
+    if (!snap.exists()) return;
+
+    const data = snap.data();
+    setLastReadByClub(data.lastReadByClub || {});
+  });
+
+  return unsub;
+}, [currentUid]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, user => {
@@ -140,31 +231,44 @@ export default function ChatRoomsScreen() {
         <FlatList
           data={rooms}
           keyExtractor={item => item.id}
-          renderItem={({ item }) => (
-            <Pressable style={styles.chatRow} onPress={() => openChat(item)}>
-              
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {item.name.charAt(0).toUpperCase()}
-                </Text>
-              </View>
+          renderItem={({ item }) => {
+            const unreadCount = unreadCounts[item.id] || 0;
+            const unread = unreadCount > 0;
 
-              <View style={styles.textWrap}>
-                <Text numberOfLines={1} style={styles.chatName}>
-                  {item.name}
-                </Text>
+            return (
+              <Pressable style={styles.chatRow} onPress={() => openChat(item)}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>
+                    {item.name.charAt(0).toUpperCase()}
+                  </Text>
+                </View>
 
-                <Text numberOfLines={1} style={styles.previewText}>
-                  {renderPreview(item)}
-                </Text>
-              </View>
+                <View style={styles.textWrap}>
+                  <Text numberOfLines={1} style={styles.chatName}>
+                    {item.name}
+                  </Text>
 
-              <Text style={styles.timeText}>
-                {formatChatTime(item.lastMessageTime)}
-              </Text>
+                  <Text numberOfLines={1} style={styles.previewText}>
+                    {renderPreview(item)}
+                  </Text>
+                </View>
 
-            </Pressable>
-          )}
+                <View style={styles.rightWrap}>
+                  <Text style={[styles.timeText, unread && styles.unreadTimeText]}>
+                    {formatChatTime(item.lastMessageTime)}
+                  </Text>
+
+                  {unread && (
+                    <View style={styles.unreadBadge}>
+                      <Text style={styles.unreadBadgeText}>
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </Pressable>
+            );
+          }}
         />
       )}
     </View>
@@ -242,6 +346,30 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: 12,
     color: "#6B7280"
-  }
+  },
 
+  unreadTimeText: {
+  color: "#25D366",
+  fontWeight: "600"
+},
+unreadBadge: {
+  marginTop: 6,
+  minWidth: 22,
+  height: 22,
+  borderRadius: 11,
+  backgroundColor: "#25D366",
+  alignItems: "center",
+  justifyContent: "center",
+  paddingHorizontal: 6
+},
+unreadBadgeText: {
+  color: "white",
+  fontSize: 12,
+  fontWeight: "700"
+},
+rightWrap: {
+  justifyContent: "flex-start",
+  alignItems: "flex-end",
+  minWidth: 62
+}
 });

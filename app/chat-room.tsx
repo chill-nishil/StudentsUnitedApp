@@ -12,6 +12,7 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -121,6 +122,27 @@ function containsProfanity(text: string): boolean {
   return words.some(word => BLOCKED_WORDS.includes(word));
 }
 
+function isMessageAfterCutoff(messageCreatedAt: any, cutoff: any): boolean {
+  const messageDate =
+    messageCreatedAt && typeof messageCreatedAt?.toDate === "function"
+      ? messageCreatedAt.toDate()
+      : messageCreatedAt instanceof Date
+      ? messageCreatedAt
+      : null;
+
+  const cutoffDate =
+    cutoff && typeof cutoff?.toDate === "function"
+      ? cutoff.toDate()
+      : cutoff instanceof Date
+      ? cutoff
+      : null;
+
+  if (!messageDate || !cutoffDate) return false;
+
+  return messageDate.getTime() > cutoffDate.getTime();
+}
+
+
 export default function ChatScreen() {
   const auth = getAuth();
   const [currentUid, setCurrentUid] = useState<string | null>(null);
@@ -171,6 +193,53 @@ export default function ChatScreen() {
   const params = useLocalSearchParams<{ clubId?: string; clubName?: string }>();
   const selectedClubId = typeof params.clubId === "string" ? params.clubId : null;
   const selectedClubName = typeof params.clubName === "string" ? params.clubName : null;
+
+  const [unreadCutoff, setUnreadCutoff] = useState<any>(null);
+  const [showUnreadHighlight, setShowUnreadHighlight] = useState(false);
+  const unreadTimerRef = useRef<any>(null);
+
+  useEffect(() => {
+  if (!currentUid || !userClubId) return;
+
+  const userRef = doc(db, "users", currentUid);
+
+  getDocs(query(collection(db, "users"), where("uid", "==", currentUid)))
+    .then(async snap => {
+      if (snap.empty) return;
+
+      const data = snap.docs[0].data();
+      const previousLastRead = data.lastReadByClub?.[userClubId] || null;
+
+      setUnreadCutoff(previousLastRead);
+
+      if (previousLastRead) {
+        setShowUnreadHighlight(true);
+
+        if (unreadTimerRef.current) {
+          clearTimeout(unreadTimerRef.current);
+        }
+
+        unreadTimerRef.current = setTimeout(() => {
+          setShowUnreadHighlight(false);
+        }, 1000);
+      } else {
+        setShowUnreadHighlight(false);
+      }
+
+      await updateDoc(userRef, {
+        [`lastReadByClub.${userClubId}`]: serverTimestamp()
+      });
+    })
+    .catch((e: any) => {
+      console.log("READ_UPDATE_ERROR", e?.code, e?.message, e);
+    });
+
+  return () => {
+    if (unreadTimerRef.current) {
+      clearTimeout(unreadTimerRef.current);
+    }
+  };
+}, [currentUid, userClubId]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, user => {
@@ -223,7 +292,7 @@ export default function ChatScreen() {
     const q = query(
       collection(db, "chats"),
       where("clubId", "==", userClubId),
-      orderBy("createdAt", "asc")
+      orderBy("createdAt", "desc")
     );
 
     const unsub = onSnapshot(q, snapshot => {
@@ -280,6 +349,42 @@ export default function ChatScreen() {
 
     return unsub;
   }, [userClubId, currentUid]);
+
+  async function refreshClubLastMessage(clubId: string) {
+  const latestQuery = query(
+    collection(db, "chats"),
+    where("clubId", "==", clubId),
+    orderBy("createdAt", "desc"),
+    limit(1)
+  );
+
+  const latestSnap = await getDocs(latestQuery);
+  const clubRef = doc(db, "clubs", clubId);
+
+  if (latestSnap.empty) {
+    await updateDoc(clubRef, {
+      lastMessage: "",
+      lastMessageSender: "",
+      lastMessageTime: null
+    });
+    return;
+  }
+
+  const latestData = latestSnap.docs[0].data();
+
+  const latestText =
+    latestData.message && latestData.message.trim()
+      ? latestData.message.trim()
+      : latestData.mediaBase64
+      ? "Photo"
+      : "";
+
+  await updateDoc(clubRef, {
+    lastMessage: latestText,
+    lastMessageSender: latestData.senderName || "",
+    lastMessageTime: latestData.createdAt || null
+  });
+}
 
   async function acceptJoinRequest(requestUid: string) {
   if (!userClubId) return;
@@ -369,6 +474,15 @@ export default function ChatScreen() {
       lastMessageSender: userName,
       lastMessageTime: serverTimestamp()
     });
+
+    const userRef = doc(db, "users", currentUid!);
+
+      await updateDoc(userRef, {
+        [`lastReadByClub.${userClubId}`]: serverTimestamp()
+      });
+
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+
   } catch (e: any) {
     console.log("SEND_ERROR", e?.code, e?.message, e);
     setInput(prevInput);
@@ -530,6 +644,10 @@ export default function ChatScreen() {
       onPress: async () => {
         try {
           await deleteDoc(doc(db, "chats", messageId));
+
+          if (userClubId) {
+            await refreshClubLastMessage(userClubId);
+          }
         } catch (e: any) {
           console.log("DELETE_ERROR", e?.code, e?.message, e);
         }
@@ -695,6 +813,7 @@ export default function ChatScreen() {
         contentContainerStyle={{ paddingBottom: 16 }}
         style={{ flex: 1 }}
         keyboardShouldPersistTaps="handled"
+        inverted
         onScrollToIndexFailed={() => {
           // ignore
         }}
@@ -702,12 +821,17 @@ export default function ChatScreen() {
           const timeLabel = formatTime(item.createdAt);
 
           const curDate = toDateSafe(item.createdAt);
-          const prev = index > 0 ? messages[index - 1] : null;
-          const prevDate = prev ? toDateSafe(prev.createdAt) : null;
-          const showDayHeader = !!curDate && (!prevDate || !sameDay(curDate, prevDate));
+          const next = index < messages.length - 1 ? messages[index + 1] : null;
+          const nextDate = next ? toDateSafe(next.createdAt) : null;
+          const showDayHeader = !!curDate && (!nextDate || !sameDay(curDate, nextDate));
 
           const canDelete = isPresident || (!!currentUid && !!item.senderUid && item.senderUid === currentUid);
           const isPinnedRow = !!pinnedMessageId && pinnedMessageId === item.id;
+          
+          const shouldHighlightUnread =
+            showUnreadHighlight &&
+            item.senderUid !== currentUid &&
+            isMessageAfterCutoff(item.createdAt, unreadCutoff);
 
           return (
             <View>
@@ -728,11 +852,11 @@ export default function ChatScreen() {
                   onLongPress={() => handleMessageLongPress(item, canDelete)}
                   disabled={!canDelete}
                 >
-                  <View
-                    style={[
-                      styles.message,
-                      item.senderName === userName ? styles.myMessage : styles.otherMessage,
-                      isPinnedRow && styles.pinnedMessageOutline
+                  <View style={[
+                        styles.message,
+                        item.senderName === userName ? styles.myMessage : styles.otherMessage,
+                        isPinnedRow && styles.pinnedMessageOutline,
+                        shouldHighlightUnread && styles.unreadMessageHighlight
                     ]}
                   >
                     <Text style={styles.sender}>
@@ -1361,5 +1485,10 @@ const styles = StyleSheet.create({
   screenOverlay: {
     flex: 1,
     backgroundColor: "rgba(255,255,255,0.25)"
+  },
+  unreadMessageHighlight: {
+  borderWidth: 2,
+  borderColor: "#25D366",
+  backgroundColor: "#DCFCE7"
   }
 });

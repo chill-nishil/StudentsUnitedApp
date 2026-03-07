@@ -70,7 +70,8 @@ export default function CreateAccountScreen() {
         clubName: normalizedClubName,
         clubIds: [],
         clubNames: [],
-        pendingClubRequests: []
+        pendingClubRequests: [],
+        lastReadByClub: {}
       });
 
       console.log("USER DOC CREATED");
@@ -92,7 +93,8 @@ export default function CreateAccountScreen() {
           clubName: normalizedClubName,
           clubIds: [clubRef.id],
           clubNames: [normalizedClubName],
-          pendingClubRequests: []
+          pendingClubRequests: [],
+          [`lastReadByClub.${clubRef.id}`]: new Date()
         });
 
         console.log("USER UPDATED WITH CLUB ID");
