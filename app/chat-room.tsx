@@ -1105,7 +1105,7 @@ export default function ChatScreen() {
 
               <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
                 <Pressable style={styles.openCalendarButton} onPress={() => router.push("/calendar")}>
-                  <Text style={styles.openCalendarText}>Add Event</Text>
+                  <Text style={styles.openCalendarText}>View Calendar</Text>
                 </Pressable>
 
                 {isPresident && (
