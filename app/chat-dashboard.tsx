@@ -82,74 +82,73 @@ export default function ChatRoomsScreen() {
   const [loading, setLoading] = useState(true);
 
   const [lastReadByClub, setLastReadByClub] = useState<Record<string, any>>({});
-
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
-  if (!currentUid || rooms.length === 0) {
-    setUnreadCounts({});
-    return;
-  }
-
-  const unsubscribers: (() => void)[] = [];
-
-  rooms.forEach(room => {
-    const lastReadTime = lastReadByClub[room.id];
-
-    let chatsQuery;
-
-    if (lastReadTime) {
-      chatsQuery = query(
-        collection(db, "chats"),
-        where("clubId", "==", room.id),
-        where("createdAt", ">", lastReadTime)
-      );
-    } else {
-      chatsQuery = query(
-        collection(db, "chats"),
-        where("clubId", "==", room.id)
-      );
+    if (!currentUid || rooms.length === 0) {
+      setUnreadCounts({});
+      return;
     }
 
-    const unsub = onSnapshot(chatsQuery, snap => {
-      let count = 0;
+    const unsubscribers: (() => void)[] = [];
 
-      snap.docs.forEach(d => {
-        const data = d.data();
+    rooms.forEach(room => {
+      const lastReadTime = lastReadByClub[room.id];
 
-        if (data.senderUid !== currentUid) {
-          count += 1;
-        }
+      let chatsQuery;
+
+      if (lastReadTime) {
+        chatsQuery = query(
+          collection(db, "chats"),
+          where("clubId", "==", room.id),
+          where("createdAt", ">", lastReadTime)
+        );
+      } else {
+        chatsQuery = query(
+          collection(db, "chats"),
+          where("clubId", "==", room.id)
+        );
+      }
+
+      const unsub = onSnapshot(chatsQuery, snap => {
+        let count = 0;
+
+        snap.docs.forEach(d => {
+          const data = d.data();
+
+          if (data.senderUid !== currentUid) {
+            count += 1;
+          }
+        });
+
+        setUnreadCounts(prev => ({
+          ...prev,
+          [room.id]: count
+        }));
       });
 
-      setUnreadCounts(prev => ({
-        ...prev,
-        [room.id]: count
-      }));
+      unsubscribers.push(unsub);
     });
 
-    unsubscribers.push(unsub);
-  });
-
-  return () => {
-    unsubscribers.forEach(unsub => unsub());
-  };
-}, [currentUid, rooms, lastReadByClub]);
+    return () => {
+      unsubscribers.forEach(unsub => unsub());
+    };
+  }, [currentUid, rooms, lastReadByClub]);
 
   useEffect(() => {
-  if (!currentUid) return;
+    if (!currentUid) return;
 
-  const userRef = doc(db, "users", currentUid);
+    const userRef = doc(db, "users", currentUid);
 
-  const unsub = onSnapshot(userRef, snap => {
-    if (!snap.exists()) return;
+    const unsub = onSnapshot(userRef, snap => {
+      if (!snap.exists()) return;
 
-    const data = snap.data();
-    setLastReadByClub(data.lastReadByClub || {});
-  });
+      const data = snap.data();
+      setLastReadByClub(data.lastReadByClub || {});
+    });
 
-  return unsub;
-}, [currentUid]);
+    return unsub;
+  }, [currentUid]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, user => {
@@ -219,8 +218,6 @@ export default function ChatRoomsScreen() {
 
   return (
     <View style={styles.container}>
-
-      {/* WhatsApp style header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Students United Chats</Text>
       </View>
@@ -228,80 +225,88 @@ export default function ChatRoomsScreen() {
       {loading ? (
         <Text style={styles.statusText}>Loading chats...</Text>
       ) : (
-        <FlatList
-          data={rooms}
-          keyExtractor={item => item.id}
-          renderItem={({ item }) => {
-            const unreadCount = unreadCounts[item.id] || 0;
-            const unread = unreadCount > 0;
+        <>
+          <FlatList
+            data={rooms}
+            keyExtractor={item => item.id}
+            contentContainerStyle={styles.listContent}
+            renderItem={({ item }) => {
+              const unreadCount = unreadCounts[item.id] || 0;
+              const unread = unreadCount > 0;
 
-            return (
-              <Pressable style={styles.chatRow} onPress={() => openChat(item)}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>
-                    {item.name.charAt(0).toUpperCase()}
-                  </Text>
-                </View>
+              return (
+                <Pressable style={styles.chatRow} onPress={() => openChat(item)}>
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>
+                      {item.name.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
 
-                <View style={styles.textWrap}>
-                  <Text numberOfLines={1} style={styles.chatName}>
-                    {item.name}
-                  </Text>
+                  <View style={styles.textWrap}>
+                    <Text numberOfLines={1} style={styles.chatName}>
+                      {item.name}
+                    </Text>
 
-                  <Text numberOfLines={1} style={styles.previewText}>
-                    {renderPreview(item)}
-                  </Text>
-                </View>
+                    <Text numberOfLines={1} style={styles.previewText}>
+                      {renderPreview(item)}
+                    </Text>
+                  </View>
 
-                <View style={styles.rightWrap}>
-                  <Text style={[styles.timeText, unread && styles.unreadTimeText]}>
-                    {formatChatTime(item.lastMessageTime)}
-                  </Text>
+                  <View style={styles.rightWrap}>
+                    <Text style={[styles.timeText, unread && styles.unreadTimeText]}>
+                      {formatChatTime(item.lastMessageTime)}
+                    </Text>
 
-                  {unread && (
-                    <View style={styles.unreadBadge}>
-                      <Text style={styles.unreadBadgeText}>
-                        {unreadCount > 99 ? "99+" : unreadCount}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </Pressable>
-            );
-          }}
-        />
+                    {unread && (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadBadgeText}>
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </Pressable>
+              );
+            }}
+          />
+
+          <Pressable
+            style={styles.floatingJoinButton}
+            onPress={() => router.push("/join-club")}
+          >
+            <Text style={styles.floatingJoinButtonText}>Join Club</Text>
+          </Pressable>
+        </>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-
   container: {
     flex: 1,
     backgroundColor: "white"
   },
-
   header: {
     backgroundColor: "#7b97d4",
     paddingTop: 30,
     paddingBottom: 16,
     paddingLeft: 18
   },
-
   headerTitle: {
     color: "white",
     fontSize: 20,
     fontWeight: "600"
   },
-
   statusText: {
     marginTop: 40,
     textAlign: "center",
     fontSize: 15,
     color: "#6B7280"
   },
-
+  listContent: {
+    paddingBottom: 110
+  },
   chatRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -310,7 +315,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#d7e8f9"
   },
-
   avatar: {
     width: 52,
     height: 52,
@@ -320,56 +324,74 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 12
   },
-
   avatarText: {
     color: "white",
     fontSize: 20,
     fontWeight: "700"
   },
-
   textWrap: {
     flex: 1
   },
-
   chatName: {
     fontSize: 16,
     fontWeight: "600",
     color: "#111827"
   },
-
   previewText: {
     fontSize: 14,
     color: "#6B7280",
     marginTop: 3
   },
-
   timeText: {
     fontSize: 12,
     color: "#6B7280"
   },
-
   unreadTimeText: {
-  color: "#25D366",
-  fontWeight: "600"
-},
-unreadBadge: {
-  marginTop: 6,
-  minWidth: 22,
-  height: 22,
-  borderRadius: 11,
-  backgroundColor: "#25D366",
-  alignItems: "center",
-  justifyContent: "center",
-  paddingHorizontal: 6
-},
-unreadBadgeText: {
-  color: "white",
-  fontSize: 12,
-  fontWeight: "700"
-},
-rightWrap: {
-  justifyContent: "flex-start",
-  alignItems: "flex-end",
-  minWidth: 62
-}
+    color: "#25D366",
+    fontWeight: "600"
+  },
+  unreadBadge: {
+    marginTop: 6,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: "#25D366",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6
+  },
+  unreadBadgeText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "700"
+  },
+  rightWrap: {
+    justifyContent: "flex-start",
+    alignItems: "flex-end",
+    minWidth: 62
+  },
+  floatingJoinButton: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 50,
+    backgroundColor: "#7b97d4",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 3
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 6
+  },
+  floatingJoinButtonText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "600"
+  }
 });

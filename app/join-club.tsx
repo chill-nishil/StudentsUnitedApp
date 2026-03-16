@@ -1,4 +1,5 @@
 import { db } from "@/FirebaseConfig";
+import { router } from "expo-router";
 import { getAuth } from "firebase/auth";
 import {
   arrayUnion,
@@ -10,7 +11,7 @@ import {
   updateDoc,
   where
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -29,6 +30,10 @@ export default function JoinClubScreen() {
   const [joinedClubIds, setJoinedClubIds] = useState<string[]>([]);
   const [pendingClubRequests, setPendingClubRequests] = useState<string[]>([]);
 
+  const hasAutoNavigatedRef = useRef(false);
+
+  const previousClubCount = useRef(0);
+
   useEffect(() => {
     if (!currentUid) return;
 
@@ -39,8 +44,20 @@ export default function JoinClubScreen() {
 
       const data = snap.docs[0].data();
 
-      setJoinedClubIds(data.clubIds || []);
-      setPendingClubRequests(data.pendingClubRequests || []);
+      const nextJoinedClubIds = data.clubIds || [];
+      const nextPendingClubRequests = data.pendingClubRequests || [];
+
+      setJoinedClubIds(nextJoinedClubIds);
+      setPendingClubRequests(nextPendingClubRequests);
+
+      if (
+        nextJoinedClubIds.length > previousClubCount.current &&
+        previousClubCount.current !== 0
+      ) {
+        router.replace("/chat-dashboard");
+      }
+
+      previousClubCount.current = nextJoinedClubIds.length;
     });
 
     return unsub;
@@ -116,6 +133,7 @@ export default function JoinClubScreen() {
         placeholder="Enter club name"
         value={searchText}
         onChangeText={setSearchText}
+        autoCapitalize="characters"
         style={styles.input}
       />
 
