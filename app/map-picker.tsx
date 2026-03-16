@@ -2,15 +2,15 @@ import * as Location from "expo-location";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Keyboard,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Keyboard,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
 } from "react-native";
 import MapView, { MapPressEvent, Marker, Region } from "react-native-maps";
 
@@ -325,7 +325,7 @@ export default function MapPickerScreen() {
       return;
     }
 
-    router.replace({
+    router.dismissTo({
       pathname: "/add-event",
       params: {
         locationName: locationName.trim() || "Pinned location",

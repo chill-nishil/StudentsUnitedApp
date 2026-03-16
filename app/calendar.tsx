@@ -20,6 +20,9 @@ type Event = {
   description: string;
   location?: any;
   locationAddress?: string;
+  eventType?: "all-day" | "time";
+  startDate?: any;
+  endDate?: any;
 };
 
 export default function CalendarScreen() {
@@ -38,7 +41,10 @@ export default function CalendarScreen() {
           date: data.date,
           description: data.description,
           location: data.location ?? "",
-          locationAddress: data.locationAddress ?? ""
+          locationAddress: data.locationAddress ?? "",
+          eventType: data.eventType ?? "all-day",
+          startDate: data.startDate ?? null,
+          endDate: data.endDate ?? null
         };
       });
       setEvents(list);
@@ -62,6 +68,33 @@ export default function CalendarScreen() {
 
     if (typeof address === "string") {
       return address.trim();
+    }
+
+    return "";
+  };
+
+  const getEventDateText = (dateValue: any) => {
+    if (!dateValue?.toDate) return "";
+    return dateValue.toDate().toLocaleDateString();
+  };
+
+  const getEventTimeRangeText = (item: Event) => {
+    if (item.eventType === "all-day") {
+      return "All-Day";
+    }
+
+    if (item.eventType === "time" && item.startDate?.toDate && item.endDate?.toDate) {
+      const startText = item.startDate.toDate().toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit"
+      });
+
+      const endText = item.endDate.toDate().toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit"
+      });
+
+      return `${startText} - ${endText}`;
     }
 
     return "";
@@ -96,7 +129,7 @@ export default function CalendarScreen() {
   const markedDates: any = {};
 
   events.forEach(event => {
-    const dateStr = event.date?.toDate().toISOString().split("T")[0];
+    const dateStr = event.date?.toDate?.().toISOString().split("T")[0];
 
     if (!dateStr) return;
 
@@ -108,7 +141,7 @@ export default function CalendarScreen() {
 
   const filteredEvents = selectedDate
     ? events.filter(event => {
-        const dateStr = event.date?.toDate().toISOString().split("T")[0];
+        const dateStr = event.date?.toDate?.().toISOString().split("T")[0];
         return dateStr === selectedDate;
       })
     : events;
@@ -157,9 +190,15 @@ export default function CalendarScreen() {
             <View style={styles.eventCard}>
               <Text style={styles.eventTitle}>{item.title}</Text>
 
-              <Text style={styles.eventDate}>
-                {item.date?.toDate().toLocaleDateString()}
-              </Text>
+              <View style={styles.dateRow}>
+                <Text style={styles.eventDate}>
+                  {getEventDateText(item.date)}
+                </Text>
+
+                <Text style={styles.eventTime}>
+                  {getEventTimeRangeText(item)}
+                </Text>
+              </View>
 
               {!!safeLocation && (
                 <Pressable onPress={() => openInMaps(item)}>
@@ -198,8 +237,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600"
   },
+  dateRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 4
+  },
   eventDate: {
-    marginTop: 4,
+    color: "#2563EB"
+  },
+  eventTime: {
     color: "#2563EB"
   },
   eventLocation: {

@@ -5,6 +5,7 @@ import { addDoc, collection } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -22,9 +23,28 @@ export default function AddEventScreen() {
   const [locationLat, setLocationLat] = useState<number | null>(null);
   const [locationLng, setLocationLng] = useState<number | null>(null);
 
+  const [eventType, setEventType] = useState<"all-day" | "time">("all-day");
+
   const [eventDate, setEventDate] = useState(new Date());
+
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date();
+    d.setSeconds(0);
+    d.setMilliseconds(0);
+    return d;
+  });
+
+  const [endDate, setEndDate] = useState(() => {
+    const d = new Date();
+    d.setSeconds(0);
+    d.setMilliseconds(0);
+    d.setHours(d.getHours() + 1);
+    return d;
+  });
+
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -51,9 +71,30 @@ export default function AddEventScreen() {
     }
   }, [params.locationName, params.locationAddress, params.lat, params.lng]);
 
+  const getDateOnlyValue = (date: Date) => {
+    const updated = new Date(date);
+    updated.setHours(0, 0, 0, 0);
+    return updated;
+  };
+
+  const applySelectedDayToTime = (baseTime: Date, selectedDay: Date) => {
+    const updated = new Date(baseTime);
+    updated.setFullYear(
+      selectedDay.getFullYear(),
+      selectedDay.getMonth(),
+      selectedDay.getDate()
+    );
+    return updated;
+  };
+
   const handleAddEvent = async () => {
     if (!title.trim() || !description.trim()) {
       alert("Please fill out title and description");
+      return;
+    }
+
+    if (eventType === "time" && endDate <= startDate) {
+      alert("End time must be after start time");
       return;
     }
 
@@ -72,7 +113,10 @@ export default function AddEventScreen() {
                 longitude: locationLng
               }
             : null,
-        date: eventDate
+        eventType,
+        date: getDateOnlyValue(eventDate),
+        startDate: eventType === "time" ? startDate : null,
+        endDate: eventType === "time" ? endDate : null
       });
 
       router.back();
@@ -84,7 +128,12 @@ export default function AddEventScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.title}>Add Event</Text>
 
       <TextInput
@@ -142,12 +191,51 @@ export default function AddEventScreen() {
         </View>
       )}
 
+      <View style={styles.typeToggleWrap}>
+        <Pressable
+          style={[
+            styles.typeToggleButton,
+            eventType === "all-day" && styles.typeToggleButtonActive
+          ]}
+          onPress={() => {
+            setEventType("all-day");
+            setShowStartTimePicker(false);
+            setShowEndTimePicker(false);
+          }}
+        >
+          <Text
+            style={[
+              styles.typeToggleText,
+              eventType === "all-day" && styles.typeToggleTextActive
+            ]}
+          >
+            All-Day
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[
+            styles.typeToggleButton,
+            eventType === "time" && styles.typeToggleButtonActive
+          ]}
+          onPress={() => setEventType("time")}
+        >
+          <Text
+            style={[
+              styles.typeToggleText,
+              eventType === "time" && styles.typeToggleTextActive
+            ]}
+          >
+            Time
+          </Text>
+        </Pressable>
+      </View>
+
       <View style={styles.inlineContainer}>
         <Pressable
           style={[styles.inlineRow, styles.firstInlineRow]}
           onPress={() => {
-            setShowDatePicker(!showDatePicker);
-            setShowTimePicker(false);
+            setShowDatePicker(prev => !prev);
           }}
         >
           <Text style={styles.inlineLabel}>Date</Text>
@@ -165,48 +253,96 @@ export default function AddEventScreen() {
             onChange={(event, selectedDate) => {
               if (!selectedDate) return;
 
-              const updated = new Date(eventDate);
-              updated.setFullYear(
+              const updatedEventDate = new Date(eventDate);
+              updatedEventDate.setFullYear(
                 selectedDate.getFullYear(),
                 selectedDate.getMonth(),
                 selectedDate.getDate()
               );
-              setEventDate(updated);
+              setEventDate(updatedEventDate);
+
+              setStartDate(prev => applySelectedDayToTime(prev, selectedDate));
+              setEndDate(prev => applySelectedDayToTime(prev, selectedDate));
             }}
           />
         )}
 
-        <Pressable
-          style={styles.inlineRow}
-          onPress={() => {
-            setShowTimePicker(!showTimePicker);
-            setShowDatePicker(false);
-          }}
-        >
-          <Text style={styles.inlineLabel}>Time</Text>
-          <Text style={styles.inlineValue}>
-            {eventDate.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit"
-            })}
-          </Text>
-        </Pressable>
+        {eventType === "time" && (
+          <>
+            <Pressable
+              style={styles.inlineRow}
+              onPress={() => {
+                setShowStartTimePicker(prev => !prev);
+              }}
+            >
+              <Text style={styles.inlineLabel}>Start Time</Text>
+              <Text style={styles.inlineValue}>
+                {startDate.toLocaleTimeString([], {
+                  hour: "numeric",
+                  minute: "2-digit"
+                })}
+              </Text>
+            </Pressable>
 
-        {showTimePicker && (
-          <DateTimePicker
-            value={eventDate}
-            mode="time"
-            display="inline"
-            themeVariant="light"
-            onChange={(event, selectedDate) => {
-              if (!selectedDate) return;
+            {showStartTimePicker && (
+              <DateTimePicker
+                value={startDate}
+                mode="time"
+                display="inline"
+                themeVariant="light"
+                onChange={(event, selectedDate) => {
+                  if (!selectedDate) return;
 
-              const updated = new Date(eventDate);
-              updated.setHours(selectedDate.getHours());
-              updated.setMinutes(selectedDate.getMinutes());
-              setEventDate(updated);
-            }}
-          />
+                  const updated = new Date(startDate);
+                  updated.setHours(selectedDate.getHours());
+                  updated.setMinutes(selectedDate.getMinutes());
+                  updated.setSeconds(0);
+                  updated.setMilliseconds(0);
+                  setStartDate(updated);
+
+                  if (endDate <= updated) {
+                    const newEnd = new Date(updated);
+                    newEnd.setHours(newEnd.getHours() + 1);
+                    setEndDate(newEnd);
+                  }
+                }}
+              />
+            )}
+
+            <Pressable
+              style={styles.inlineRow}
+              onPress={() => {
+                setShowEndTimePicker(prev => !prev);
+              }}
+            >
+              <Text style={styles.inlineLabel}>End Time</Text>
+              <Text style={styles.inlineValue}>
+                {endDate.toLocaleTimeString([], {
+                  hour: "numeric",
+                  minute: "2-digit"
+                })}
+              </Text>
+            </Pressable>
+
+            {showEndTimePicker && (
+              <DateTimePicker
+                value={endDate}
+                mode="time"
+                display="inline"
+                themeVariant="light"
+                onChange={(event, selectedDate) => {
+                  if (!selectedDate) return;
+
+                  const updated = new Date(endDate);
+                  updated.setHours(selectedDate.getHours());
+                  updated.setMinutes(selectedDate.getMinutes());
+                  updated.setSeconds(0);
+                  updated.setMilliseconds(0);
+                  setEndDate(updated);
+                }}
+              />
+            )}
+          </>
         )}
       </View>
 
@@ -219,15 +355,18 @@ export default function AddEventScreen() {
           {saving ? "Saving..." : "Save Event"}
         </Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
     backgroundColor: "#dbeafe"
+  },
+  contentContainer: {
+    padding: 24,
+    paddingBottom: 40
   },
   title: {
     fontSize: 22,
@@ -276,6 +415,32 @@ const styles = StyleSheet.create({
   addressText: {
     fontSize: 14,
     color: "#111827"
+  },
+  typeToggleWrap: {
+    flexDirection: "row",
+    backgroundColor: "white",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    padding: 4,
+    marginBottom: 12
+  },
+  typeToggleButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center"
+  },
+  typeToggleButtonActive: {
+    backgroundColor: "#2563EB"
+  },
+  typeToggleText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#374151"
+  },
+  typeToggleTextActive: {
+    color: "white"
   },
   inlineContainer: {
     backgroundColor: "white",
