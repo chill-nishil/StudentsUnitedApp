@@ -1,6 +1,15 @@
 import { db } from "@/FirebaseConfig";
 import { router } from "expo-router";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
+import {
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  where
+} from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -30,27 +39,64 @@ export default function CalendarScreen() {
   const [selectedDate, setSelectedDate] = useState("");
 
   useEffect(() => {
-    const q = query(collection(db, "events"), orderBy("date", "asc"));
+    const auth = getAuth();
 
-    const unsub = onSnapshot(q, snapshot => {
-      const list = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          title: data.title,
-          date: data.date,
-          description: data.description,
-          location: data.location ?? "",
-          locationAddress: data.locationAddress ?? "",
-          eventType: data.eventType ?? "all-day",
-          startDate: data.startDate ?? null,
-          endDate: data.endDate ?? null
-        };
+    let unsubEvents: (() => void) | null = null;
+
+    const unsubAuth = onAuthStateChanged(auth, async user => {
+      if (!user) {
+        setEvents([]);
+        return;
+      }
+
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+        setEvents([]);
+        return;
+      }
+
+      const userData = userSnap.data();
+      const clubId = userData.clubId;
+
+      if (!clubId) {
+        setEvents([]);
+        return;
+      }
+
+      const q = query(
+        collection(db, "events"),
+        where("clubId", "==", clubId),
+        orderBy("date", "asc")
+      );
+
+      unsubEvents = onSnapshot(q, snapshot => {
+        const list = snapshot.docs.map(docItem => {
+          const data = docItem.data();
+          return {
+            id: docItem.id,
+            title: data.title,
+            date: data.date,
+            description: data.description,
+            location: data.location ?? "",
+            locationAddress: data.locationAddress ?? "",
+            eventType: data.eventType ?? "all-day",
+            startDate: data.startDate ?? null,
+            endDate: data.endDate ?? null
+          };
+        });
+
+        setEvents(list);
       });
-      setEvents(list);
     });
 
-    return unsub;
+    return () => {
+      unsubAuth();
+      if (unsubEvents) {
+        unsubEvents();
+      }
+    };
   }, []);
 
   const getSafeLocationText = (location: any) => {

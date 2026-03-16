@@ -1,7 +1,8 @@
 import { db } from "@/FirebaseConfig";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { router, useLocalSearchParams } from "expo-router";
-import { addDoc, collection } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
+import { addDoc, collection, doc, getDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
   Pressable,
@@ -101,6 +102,30 @@ export default function AddEventScreen() {
     try {
       setSaving(true);
 
+      const auth = getAuth();
+      const user = auth.currentUser;
+
+      if (!user) {
+        alert("You must be signed in.");
+        return;
+      }
+
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+        alert("Could not find user data.");
+        return;
+      }
+
+      const userData = userSnap.data();
+      const clubId = userData.clubId;
+
+      if (!clubId) {
+        alert("You are not in a club.");
+        return;
+      }
+
       await addDoc(collection(db, "events"), {
         title: title.trim(),
         description: description.trim(),
@@ -116,7 +141,8 @@ export default function AddEventScreen() {
         eventType,
         date: getDateOnlyValue(eventDate),
         startDate: eventType === "time" ? startDate : null,
-        endDate: eventType === "time" ? endDate : null
+        endDate: eventType === "time" ? endDate : null,
+        clubId
       });
 
       router.back();
