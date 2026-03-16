@@ -28,6 +28,7 @@ export default function CreateAccountScreen() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [position, setPosition] = useState("");
   const [clubName, setClubName] = useState("");
   const [loading, setLoading] = useState(false);
@@ -38,8 +39,13 @@ export default function CreateAccountScreen() {
   const handleCreateAccount = async () => {
     console.log("CREATE ACCOUNT START");
 
-    if (!name || !email || !password || !position) {
+    if (!name || !email || !password || !confirmPassword || !position) {
       alert("Please fill out all required fields");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      alert("Passwords do not match");
       return;
     }
 
@@ -101,7 +107,7 @@ export default function CreateAccountScreen() {
       }
 
       router.push(`/chat-room?uid=${uid}`);
-      } catch (e: any) {
+    } catch (e: any) {
       console.error("CREATE ACCOUNT ERROR:", e);
       alert(e.message);
     } finally {
@@ -146,10 +152,28 @@ export default function CreateAccountScreen() {
 
           <View style={styles.passwordContainer}>
             <TextInput
-              placeholder="Create password"
+              placeholder="Create password (6+ characters)"
               placeholderTextColor="#6B7280"
               value={password}
               onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              style={styles.passwordInput}
+            />
+            <Pressable onPress={() => setShowPassword(!showPassword)}>
+              <Ionicons
+                name={showPassword ? "eye-off" : "eye"}
+                size={22}
+                color="#6B7280"
+              />
+            </Pressable>
+          </View>
+
+          <View style={styles.passwordContainer}>
+            <TextInput
+              placeholder="Confirm password"
+              placeholderTextColor="#6B7280"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
               secureTextEntry={!showPassword}
               style={styles.passwordInput}
             />
