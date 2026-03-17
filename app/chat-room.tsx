@@ -50,6 +50,12 @@ type Message = {
   mediaBase64?: string;
 };
 
+type ClubMember = {
+  uid: string;
+  name: string;
+  position: string;
+};
+
 function isValidDate(d: any): d is Date {
   return d instanceof Date && !isNaN(d.getTime());
 }
@@ -140,6 +146,16 @@ function isMessageAfterCutoff(messageCreatedAt: any, cutoff: any): boolean {
   return messageDate.getTime() > cutoffDate.getTime();
 }
 
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+
+  return chunks;
+}
+
 export default function ChatScreen() {
   const auth = getAuth();
   const [currentUid, setCurrentUid] = useState<string | null>(null);
@@ -168,6 +184,9 @@ export default function ChatScreen() {
   const [showRequestsModal, setShowRequestsModal] = useState(false);
   const [requestUsers, setRequestUsers] = useState<any[]>([]);
 
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [memberUsers, setMemberUsers] = useState<ClubMember[]>([]);
+
   const [isPickingMedia, setIsPickingMedia] = useState(false);
   const [pendingMediaBase64, setPendingMediaBase64] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
@@ -191,6 +210,8 @@ export default function ChatScreen() {
   const [unreadCutoff, setUnreadCutoff] = useState<any>(null);
   const [showUnreadHighlight, setShowUnreadHighlight] = useState(false);
   const unreadTimerRef = useRef<any>(null);
+
+  const [selectedImageBase64, setSelectedImageBase64] = useState<string | null>(null);
 
   useEffect(() => {
     if (!currentUid || !userClubId) return;
@@ -350,6 +371,47 @@ export default function ChatScreen() {
       setPinnedCreatedAt(data.pinnedCreatedAt || null);
 
       const requests = Array.isArray(data.joinRequests) ? data.joinRequests : [];
+      const members = Array.isArray(data.members) ? data.members : [];
+
+      if (members.length === 0) {
+        setMemberUsers([]);
+      } else {
+        try {
+          const memberChunks = chunkArray(members, 10);
+          const memberSnaps = await Promise.all(
+            memberChunks.map(chunk =>
+              getDocs(query(collection(db, "users"), where("uid", "in", chunk)))
+            )
+          );
+
+          const fetchedMembers: ClubMember[] = memberSnaps.flatMap(memberSnap =>
+            memberSnap.docs.map(d => {
+              const userData = d.data();
+              const memberships = Array.isArray(userData.clubMemberships) ? userData.clubMemberships : [];
+              const membershipForClub = memberships.find(
+                (membership: any) => membership?.clubId === userClubId
+              );
+
+              return {
+                uid: userData.uid,
+                name: userData.name || "Unknown User",
+                position: membershipForClub?.position || userData.position || "Member"
+              };
+            })
+          );
+
+          fetchedMembers.sort((a, b) => {
+            if (a.uid === data.presidentId) return -1;
+            if (b.uid === data.presidentId) return 1;
+            return a.name.localeCompare(b.name);
+          });
+
+          setMemberUsers(fetchedMembers);
+        } catch (e: any) {
+          console.log("MEMBERS_FETCH_ERROR", e?.code, e?.message, e);
+          setMemberUsers([]);
+        }
+      }
 
       if (requests.length === 0) {
         setRequestUsers([]);
@@ -357,19 +419,24 @@ export default function ChatScreen() {
       }
 
       if (typeof requests[0] === "string") {
-        const usersSnap = await getDocs(
-          query(collection(db, "users"), where("uid", "in", requests))
+        const requestChunks = chunkArray(requests, 10);
+        const requestSnaps = await Promise.all(
+          requestChunks.map(chunk =>
+            getDocs(query(collection(db, "users"), where("uid", "in", chunk)))
+          )
         );
 
         setRequestUsers(
-          usersSnap.docs.map(d => {
-            const userData = d.data();
-            return {
-              uid: userData.uid,
-              name: userData.name || "Unknown User",
-              position: userData.position || ""
-            };
-          })
+          requestSnaps.flatMap(requestSnap =>
+            requestSnap.docs.map(d => {
+              const userData = d.data();
+              return {
+                uid: userData.uid,
+                name: userData.name || "Unknown User",
+                position: userData.position || ""
+              };
+            })
+          )
         );
         return;
       }
@@ -915,10 +982,12 @@ export default function ChatScreen() {
                     </Text>
 
                     {!!item.mediaBase64 && (
-                      <Image
-                        source={{ uri: `data:image/jpeg;base64,${item.mediaBase64}` }}
-                        style={styles.chatImage}
-                      />
+                      <Pressable onPress={() => setSelectedImageBase64(item.mediaBase64 || null)}>
+                        <Image
+                          source={{ uri: `data:image/jpeg;base64,${item.mediaBase64}` }}
+                          style={styles.chatImage}
+                        />
+                      </Pressable>
                     )}
 
                     {!!item.message && (
@@ -1043,9 +1112,62 @@ export default function ChatScreen() {
         }}
       />
 
+      <Modal visible={showMembersModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.membersModalCard}>
+            <Text style={styles.membersModalTitle}>Members</Text>
+
+            {memberUsers.length === 0 ? (
+              <Text style={styles.membersEmptyText}>No members found</Text>
+            ) : (
+              <FlatList
+                data={memberUsers}
+                keyExtractor={item => item.uid}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item }) => {
+                  const isMemberPresident = item.position?.trim().toLowerCase() === "president";
+                  return (
+                    <View style={styles.memberRow}>
+                      <View style={styles.memberAvatar}>
+                        <Text style={styles.memberAvatarText}>
+                          {(item.name || "?").charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.memberNameText}>{item.name}</Text>
+                        <Text style={styles.memberPositionText}>
+                          {item.position}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                }}
+              />
+            )}
+
+            {isPresident && (
+              <Pressable
+                style={styles.membersJoinRequestsButton}
+                onPress={() => {
+                  setShowMembersModal(false);
+                  setShowRequestsModal(true);
+                }}
+              >
+                <Text style={styles.membersJoinRequestsButtonText}>Join Requests</Text>
+              </Pressable>
+            )}
+
+            <Pressable onPress={() => setShowMembersModal(false)}>
+              <Text style={styles.modalCloseText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={showRequestsModal} transparent animationType="slide">
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "center" }}>
-          <View style={{ backgroundColor: "white", margin: 20, padding: 16, borderRadius: 12 }}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.requestsModalCard}>
             <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>Join Requests</Text>
 
             {requestUsers.length === 0 && <Text>No pending join requests</Text>}
@@ -1080,6 +1202,36 @@ export default function ChatScreen() {
               <Text style={{ textAlign: "center", marginTop: 12 }}>Close</Text>
             </Pressable>
           </View>
+        </View>
+      </Modal>
+
+      <Modal visible={!!selectedImageBase64}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedImageBase64(null)}
+      >
+        <View style={styles.imageModalOverlay}>
+          <Pressable
+            style={styles.imageModalOverlayTap}
+            onPress={() => setSelectedImageBase64(null)}
+          >
+            <View style={styles.imageModalCard}>
+              {!!selectedImageBase64 && (
+                <Image
+                  source={{ uri: `data:image/jpeg;base64,${selectedImageBase64}` }}
+                  style={styles.fullScreenImage}
+                  resizeMode="contain"
+                />
+              )}
+
+              <Pressable
+                style={styles.imageModalClose}
+                onPress={() => setSelectedImageBase64(null)}
+              >
+                <Text style={styles.imageModalCloseText}>×</Text>
+              </Pressable>
+            </View>
+          </Pressable>
         </View>
       </Modal>
 
@@ -1151,32 +1303,6 @@ export default function ChatScreen() {
               chatBackgroundBase64 && { backgroundColor: "transparent" }
             ]}
           >
-            {/* <View style={styles.headerTopRow}>
-              <Pressable onPress={() =>
-                  router.push({
-                    pathname: "/calendar",
-                    params: { clubId: selectedClubId }
-                  })
-                }
-              >
-                <Image
-                  source={require("../assets/images/calendarGraphic.png")}
-                  style={styles.clubHeaderImage}
-                  resizeMode="contain"
-                />
-              </Pressable>
-
-              <View style={styles.headerCenterWrap}>
-                <Text style={styles.clubHeader}>{clubName}</Text>
-
-                <Text style={styles.userHeader}>
-                  {userName} · {position}
-                </Text>
-              </View>
-
-              <View style={styles.headerRightSpacer} />
-            </View> */}
-
             <View style={styles.headerTopRow}>
               <Pressable
                 onPress={() =>
@@ -1201,43 +1327,16 @@ export default function ChatScreen() {
                 </Text>
               </View>
 
-              {isPresident ? (
-                <Pressable
-                  onPress={() => setShowRequestsModal(true)}
-                  style={{ padding: 4 }}
-                >
-                  <Image
-                    source={require("../assets/images/usersGraphic.png")}
-                    style={styles.clubHeaderImage}
-                    resizeMode="contain"
-                  />
-                </Pressable>
-              ) : (
-                <View style={styles.headerRightSpacer} />
-              )}
-            </View>
-
-            <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
-              {/* <Pressable
-                style={styles.openCalendarButton}
-                onPress={() =>
-                  router.push({
-                    pathname: "/calendar",
-                    params: { clubId: selectedClubId }
-                  })
-                }
+              <Pressable
+                onPress={() => setShowMembersModal(true)}
+                style={{ padding: 4 }}
               >
-                <Text style={styles.openCalendarText}>View Calendar</Text>
-              </Pressable> */}
-
-              {/* {isPresident && (
-                <Pressable
-                  style={styles.openCalendarButton}
-                  onPress={() => setShowRequestsModal(true)}
-                >
-                  <Text style={styles.openCalendarText}>Join Requests</Text>
-                </Pressable>
-              )} */}
+                <Image
+                  source={require("../assets/images/usersGraphic.png")}
+                  style={styles.clubHeaderImage}
+                  resizeMode="contain"
+                />
+              </Pressable>
             </View>
 
             {isPresident && (
@@ -1592,10 +1691,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#DCFCE7"
   },
   headerTopRow: {
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "center",
-  marginBottom: 8
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8
   },
   clubHeaderImage: {
     width: 48,
@@ -1613,4 +1712,125 @@ const styles = StyleSheet.create({
   headerRightSpacer: {
     width: 52
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    justifyContent: "center"
+  },
+  membersModalCard: {
+    backgroundColor: "white",
+    margin: 20,
+    padding: 16,
+    borderRadius: 18,
+    maxHeight: "75%"
+  },
+  requestsModalCard: {
+    backgroundColor: "white",
+    margin: 20,
+    padding: 16,
+    borderRadius: 12,
+    maxHeight: "75%"
+  },
+  membersModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: 14
+  },
+  membersEmptyText: {
+    textAlign: "center",
+    color: "#6B7280",
+    marginVertical: 12
+  },
+  memberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6"
+  },
+  memberAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#7b97d4",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12
+  },
+  memberAvatarText: {
+    color: "white",
+    fontWeight: "700",
+    fontSize: 16
+  },
+  memberNameText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111827"
+  },
+  memberPositionText: {
+    fontSize: 13,
+    color: "#6B7280",
+    marginTop: 2
+  },
+  membersJoinRequestsButton: {
+    backgroundColor: "#7b97d4",
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 14
+  },
+  membersJoinRequestsButtonText: {
+    textAlign: "center",
+    color: "white",
+    fontWeight: "600"
+  },
+  modalCloseText: {
+    textAlign: "center",
+    marginTop: 14,
+    color: "#111827",
+    fontWeight: "500"
+  },
+  imageModalOverlay: {
+  flex: 1,
+  backgroundColor: "rgba(0,0,0,0.75)",
+  justifyContent: "center",
+  alignItems: "center"
+},
+imageModalOverlayTap: {
+  flex: 1,
+  width: "100%",
+  justifyContent: "center",
+  alignItems: "center",
+  paddingHorizontal: 16
+},
+imageModalCard: {
+  width: "100%",
+  maxWidth: 420,
+  height: "70%",
+  justifyContent: "center",
+  alignItems: "center",
+  position: "relative"
+},
+fullScreenImage: {
+  width: "100%",
+  height: "100%",
+  borderRadius: 16
+},
+imageModalClose: {
+  position: "absolute",
+  top: 10,
+  right: 10,
+  width: 34,
+  height: 34,
+  borderRadius: 17,
+  backgroundColor: "rgba(0,0,0,0.55)",
+  justifyContent: "center",
+  alignItems: "center"
+},
+imageModalCloseText: {
+  color: "white",
+  fontSize: 22,
+  fontWeight: "700",
+  lineHeight: 22
+},
 });

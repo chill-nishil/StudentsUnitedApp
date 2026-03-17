@@ -4,9 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Keyboard,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -104,21 +104,21 @@ export default function MapPickerScreen() {
   }, [pickedLat, pickedLng]);
 
   useEffect(() => {
-  if (placeSelected) return;
+    if (placeSelected) return;
 
-  const trimmed = searchText.trim();
+    const trimmed = searchText.trim();
 
-  if (!trimmed || trimmed.length < 2) {
-    setSuggestions([]);
-    return;
-  }
+    if (!trimmed || trimmed.length < 2) {
+      setSuggestions([]);
+      return;
+    }
 
-  const timeout = setTimeout(() => {
-    fetchAutocomplete(trimmed);
-  }, 300);
+    const timeout = setTimeout(() => {
+      fetchAutocomplete(trimmed);
+    }, 300);
 
-  return () => clearTimeout(timeout);
-}, [searchText, userCoords, placeSelected]);
+    return () => clearTimeout(timeout);
+  }, [searchText, userCoords, placeSelected]);
 
   const markerCoords = useMemo(() => {
     if (pickedLat === null || pickedLng === null) return null;
@@ -338,6 +338,11 @@ export default function MapPickerScreen() {
   };
 
   return (
+    <ScrollView
+    style={{ flex: 1 }}
+    contentContainerStyle={{ paddingBottom: 30 }}
+    keyboardShouldPersistTaps="handled"
+  >
     <View style={styles.container}>
       <Text style={styles.header}>Pick Event Location</Text>
 
@@ -350,7 +355,7 @@ export default function MapPickerScreen() {
             setSearchText(text);
             setPlaceSelected(false);
             setShowSuggestions(true);
-            }}
+          }}
           style={styles.input}
         />
 
@@ -358,26 +363,22 @@ export default function MapPickerScreen() {
           <ActivityIndicator style={styles.loader} size="small" color="#2563EB" />
         )}
 
-            {showSuggestions && suggestions.length > 0 && searchText.trim().length >= 2 && (
-              <View style={styles.suggestionsBox}>
-            <FlatList
-              keyboardShouldPersistTaps="handled"
-              data={suggestions}
-              keyExtractor={item => item.placeId}
-              renderItem={({ item }) => (
-                <Pressable
-                  style={styles.suggestionItem}
-                  onPress={() => fetchPlaceDetails(item)}
-                >
-                  <Text style={styles.suggestionMain}>{item.mainText}</Text>
-                  {!!item.secondaryText && (
-                    <Text style={styles.suggestionSecondary}>
-                      {item.secondaryText}
-                    </Text>
-                  )}
-                </Pressable>
-              )}
-            />
+        {showSuggestions && suggestions.length > 0 && searchText.trim().length >= 2 && (
+          <View style={styles.suggestionsBox}>
+            {suggestions.map(item => (
+              <Pressable
+                key={item.placeId}
+                style={styles.suggestionItem}
+                onPress={() => fetchPlaceDetails(item)}
+              >
+                <Text style={styles.suggestionMain}>{item.mainText}</Text>
+                {!!item.secondaryText && (
+                  <Text style={styles.suggestionSecondary}>
+                    {item.secondaryText}
+                  </Text>
+                )}
+              </Pressable>
+            ))}
           </View>
         )}
       </View>
@@ -412,8 +413,18 @@ export default function MapPickerScreen() {
         initialRegion={region}
         onPress={handleMapPress}
         onRegionChangeComplete={setRegion}
+        showsUserLocation={true}
+        showsMyLocationButton={true}
       >
         {markerCoords && <Marker coordinate={markerCoords} />}
+
+        {/* {userCoords && (
+          <Marker
+            coordinate={userCoords}
+            title="Your Location"
+            pinColor="blue"
+          />
+        )} */}
       </MapView>
 
       {markerCoords && (
@@ -432,6 +443,7 @@ export default function MapPickerScreen() {
         </Pressable>
       </View>
     </View>
+  </ScrollView>
   );
 }
 
@@ -532,10 +544,11 @@ const styles = StyleSheet.create({
     marginBottom: 10
   },
   map: {
-    flex: 1,
-    borderRadius: 12,
-    overflow: "hidden"
-  },
+  height: 420,
+  borderRadius: 12,
+  overflow: "hidden",
+  marginBottom: 10
+},
   coords: {
     marginTop: 10,
     color: "#374151",

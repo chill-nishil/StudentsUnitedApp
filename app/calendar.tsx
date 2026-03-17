@@ -2,12 +2,15 @@ import { db } from "@/FirebaseConfig";
 import { router, useLocalSearchParams } from "expo-router";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import {
+  arrayRemove,
+  arrayUnion,
   collection,
   doc,
   getDoc,
   onSnapshot,
   orderBy,
   query,
+  updateDoc,
   where
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
@@ -15,12 +18,19 @@ import {
   Alert,
   FlatList,
   Linking,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
   View
 } from "react-native";
 import { Calendar } from "react-native-calendars";
+
+type Attendee = {
+  uid: string;
+  name: string;
+  position: string;
+};
 
 type Event = {
   id: string;
@@ -32,6 +42,7 @@ type Event = {
   eventType?: "all-day" | "time";
   startDate?: any;
   endDate?: any;
+  attendees?: Attendee[];
 };
 
 export default function CalendarScreen() {
@@ -42,6 +53,13 @@ export default function CalendarScreen() {
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedDate, setSelectedDate] = useState("");
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+
+  const [currentUid, setCurrentUid] = useState("");
+  const [currentUserName, setCurrentUserName] = useState("");
+  const [currentUserPosition, setCurrentUserPosition] = useState("");
+
+  const [attendanceModalVisible, setAttendanceModalVisible] = useState(false);
+  const [attendanceEvent, setAttendanceEvent] = useState<Event | null>(null);
 
   useEffect(() => {
     const auth = getAuth();
@@ -55,9 +73,14 @@ export default function CalendarScreen() {
       }
 
       if (!user) {
+        setCurrentUid("");
+        setCurrentUserName("");
+        setCurrentUserPosition("");
         setEvents([]);
         return;
       }
+
+      setCurrentUid(user.uid);
 
       if (!selectedClubId) {
         setEvents([]);
@@ -77,6 +100,20 @@ export default function CalendarScreen() {
       const clubIds: string[] = Array.isArray(userData.clubIds)
         ? userData.clubIds
         : [];
+
+      setCurrentUserName(userData.name ?? "");
+
+      const clubMemberships = Array.isArray(userData.clubMemberships)
+        ? userData.clubMemberships
+        : [];
+
+      const matchingMembership = clubMemberships.find(
+        (membership: any) => membership?.clubId === selectedClubId
+      );
+
+      setCurrentUserPosition(
+        matchingMembership?.position ?? userData.position ?? ""
+      );
 
       if (!clubIds.includes(selectedClubId)) {
         setEvents([]);
@@ -108,11 +145,19 @@ export default function CalendarScreen() {
             locationAddress: data.locationAddress ?? "",
             eventType: data.eventType ?? "all-day",
             startDate: data.startDate ?? null,
-            endDate: data.endDate ?? null
+            endDate: data.endDate ?? null,
+            attendees: Array.isArray(data.attendees) ? data.attendees : []
           };
         });
 
         setEvents(list);
+
+        if (attendanceEvent) {
+          const updatedEvent = list.find(event => event.id === attendanceEvent.id);
+          if (updatedEvent) {
+            setAttendanceEvent(updatedEvent);
+          }
+        }
       });
     });
 
@@ -123,7 +168,7 @@ export default function CalendarScreen() {
         unsubEvents();
       }
     };
-  }, [selectedClubId]);
+  }, [selectedClubId, attendanceEvent]);
 
   const monthTitle = useMemo(() => {
     return calendarMonth.toLocaleDateString([], {
@@ -209,6 +254,45 @@ export default function CalendarScreen() {
     }
   };
 
+  const isAttendingEvent = (item: Event) => {
+    return !!item.attendees?.some(attendee => attendee.uid === currentUid);
+  };
+
+  const getCurrentAttendeeObject = (): Attendee => {
+    return {
+      uid: currentUid,
+      name: currentUserName || "Unknown User",
+      position: currentUserPosition || "Member"
+    };
+  };
+
+  const toggleAttendance = async (item: Event) => {
+    if (!currentUid) return;
+
+    try {
+      const eventRef = doc(db, "events", item.id);
+      const attendeeObject = getCurrentAttendeeObject();
+      const alreadyAttending = isAttendingEvent(item);
+
+      if (alreadyAttending) {
+        await updateDoc(eventRef, {
+          attendees: arrayRemove(attendeeObject)
+        });
+      } else {
+        await updateDoc(eventRef, {
+          attendees: arrayUnion(attendeeObject)
+        });
+      }
+    } catch {
+      Alert.alert("Error", "Could not update attendance.");
+    }
+  };
+
+  const openAttendanceList = (item: Event) => {
+    setAttendanceEvent(item);
+    setAttendanceModalVisible(true);
+  };
+
   const markedDates: any = {};
 
   events.forEach(event => {
@@ -278,6 +362,8 @@ export default function CalendarScreen() {
         keyExtractor={item => item.id}
         renderItem={({ item }) => {
           const safeLocation = getSafeLocationText(item.location);
+          const attendeeCount = item.attendees?.length ?? 0;
+          const attending = isAttendingEvent(item);
 
           return (
             <View style={styles.eventCard}>
@@ -300,10 +386,77 @@ export default function CalendarScreen() {
               )}
 
               <Text style={styles.eventDescription}>{item.description}</Text>
+
+              <View style={styles.attendanceRow}>
+                <Pressable
+                  style={styles.checkboxRow}
+                  onPress={() => toggleAttendance(item)}
+                >
+                  <View
+                    style={[
+                      styles.checkbox,
+                      attending && styles.checkboxChecked
+                    ]}
+                  >
+                    {attending && <Text style={styles.checkmark}>✓</Text>}
+                  </View>
+
+                  <Text style={styles.checkboxLabel}>
+                    {attending ? "You are attending" : "Sign Up"}
+                  </Text>
+                </Pressable>
+
+                <Text style={styles.attendeeCount}>
+                  {attendeeCount} attending
+                </Text>
+              </View>
+
+              <Pressable onPress={() => openAttendanceList(item)}>
+                <Text style={styles.attendanceLink}>View attendance list</Text>
+              </Pressable>
             </View>
           );
         }}
       />
+
+      <Modal
+        visible={attendanceModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAttendanceModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              {attendanceEvent?.title || "Attendance List"}
+            </Text>
+
+            {!attendanceEvent?.attendees?.length ? (
+              <Text style={styles.emptyAttendanceText}>
+                No one has signed up yet.
+              </Text>
+            ) : (
+              <FlatList
+                data={attendanceEvent.attendees}
+                keyExtractor={item => item.uid}
+                renderItem={({ item }) => (
+                  <View style={styles.attendeeRow}>
+                    <Text style={styles.attendeeName}>{item.name}</Text>
+                    <Text style={styles.attendeePosition}>{item.position}</Text>
+                  </View>
+                )}
+              />
+            )}
+
+            <Pressable
+              style={styles.closeButton}
+              onPress={() => setAttendanceModalVisible(false)}
+            >
+              <Text style={styles.closeButtonText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -351,6 +504,50 @@ const styles = StyleSheet.create({
     marginTop: 6,
     color: "#374151"
   },
+  attendanceRow: {
+    marginTop: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+  checkboxRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    marginRight: 12
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "white"
+  },
+  checkboxChecked: {
+    backgroundColor: "#2563EB"
+  },
+  checkmark: {
+    color: "white",
+    fontWeight: "700"
+  },
+  checkboxLabel: {
+    marginLeft: 8,
+    color: "#111827",
+    fontWeight: "500"
+  },
+  attendeeCount: {
+    color: "#2563EB",
+    fontWeight: "600"
+  },
+  attendanceLink: {
+    marginTop: 8,
+    color: "#1D4ED8",
+    textDecorationLine: "underline",
+    fontWeight: "500"
+  },
   addButton: {
     backgroundColor: "#7b97d4",
     padding: 12,
@@ -373,5 +570,53 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#111827"
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    justifyContent: "center",
+    paddingHorizontal: 20
+  },
+  modalCard: {
+    backgroundColor: "white",
+    borderRadius: 14,
+    padding: 18,
+    maxHeight: "70%"
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 12,
+    textAlign: "center",
+    color: "#111827"
+  },
+  emptyAttendanceText: {
+    textAlign: "center",
+    color: "#6B7280",
+    marginVertical: 20
+  },
+  attendeeRow: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB"
+  },
+  attendeeName: {
+    fontWeight: "600",
+    color: "#111827"
+  },
+  attendeePosition: {
+    marginTop: 2,
+    color: "#6B7280"
+  },
+  closeButton: {
+    marginTop: 14,
+    backgroundColor: "#7b97d4",
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center"
+  },
+  closeButtonText: {
+    color: "white",
+    fontWeight: "600"
   }
 });
