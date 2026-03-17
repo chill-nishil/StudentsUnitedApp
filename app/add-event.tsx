@@ -119,12 +119,14 @@ export default function AddEventScreen() {
       }
 
       const userData = userSnap.data();
-      const clubId = userData.clubId;
+      const clubIds: string[] = userData.clubIds || [];
 
-      if (!clubId) {
+      if (!clubIds.length) {
         alert("You are not in a club.");
         return;
       }
+
+      const clubId = clubIds[0];
 
       await addDoc(collection(db, "events"), {
         title: title.trim(),

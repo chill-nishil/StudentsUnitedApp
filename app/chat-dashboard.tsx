@@ -1,13 +1,26 @@
 import { db } from "@/FirebaseConfig";
 import { router } from "expo-router";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
-import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
+import {
+  addDoc,
+  arrayUnion,
+  collection,
+  doc,
+  getDocs,
+  onSnapshot,
+  query,
+  updateDoc,
+  where
+} from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
+  Alert,
   FlatList,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View
 } from "react-native";
 
@@ -53,27 +66,6 @@ function formatChatTime(value: any): string {
   }
 }
 
-function isUnread(lastMessageTime: any, lastReadTime: any): boolean {
-  const messageDate =
-    lastMessageTime && typeof lastMessageTime?.toDate === "function"
-      ? lastMessageTime.toDate()
-      : lastMessageTime instanceof Date
-      ? lastMessageTime
-      : null;
-
-  const readDate =
-    lastReadTime && typeof lastReadTime?.toDate === "function"
-      ? lastReadTime.toDate()
-      : lastReadTime instanceof Date
-      ? lastReadTime
-      : null;
-
-  if (!messageDate) return false;
-  if (!readDate) return true;
-
-  return messageDate.getTime() > readDate.getTime();
-}
-
 export default function ChatRoomsScreen() {
   const auth = getAuth();
 
@@ -83,6 +75,10 @@ export default function ChatRoomsScreen() {
 
   const [lastReadByClub, setLastReadByClub] = useState<Record<string, any>>({});
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+
+  const [showCreateClubModal, setShowCreateClubModal] = useState(false);
+  const [newClubName, setNewClubName] = useState("");
+  const [creatingClub, setCreatingClub] = useState(false);
 
   useEffect(() => {
     if (!currentUid || rooms.length === 0) {
@@ -216,16 +212,72 @@ export default function ChatRoomsScreen() {
     return `${item.lastMessageSender}: ${item.lastMessage}`;
   }
 
+  async function handleCreateClub() {
+    if (!currentUid || creatingClub) return;
+
+    const normalizedName = newClubName.trim().toUpperCase();
+
+    if (!normalizedName) {
+      Alert.alert("Error", "Please enter a club name.");
+      return;
+    }
+
+    try {
+      setCreatingClub(true);
+
+      const existingClubQuery = query(
+        collection(db, "clubs"),
+        where("name", "==", normalizedName)
+      );
+
+      const existingClubSnap = await getDocs(existingClubQuery);
+
+      if (!existingClubSnap.empty) {
+        Alert.alert("Error", "A club with that name already exists.");
+        setCreatingClub(false);
+        return;
+      }
+
+      const clubRef = await addDoc(collection(db, "clubs"), {
+        name: normalizedName,
+        presidentId: currentUid,
+        members: [currentUid],
+        joinRequests: []
+      });
+
+      const userRef = doc(db, "users", currentUid);
+
+      await updateDoc(userRef, {
+        position: "President",
+        clubIds: arrayUnion(clubRef.id),
+        clubNames: arrayUnion(normalizedName),
+        [`lastReadByClub.${clubRef.id}`]: new Date()
+      });
+
+      setNewClubName("");
+      setShowCreateClubModal(false);
+      Alert.alert("Success", "Club created.");
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "Could not create club.");
+    } finally {
+      setCreatingClub(false);
+    }
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Students United Chats</Text>
+        <Text style={styles.headerTitle}>Students United Chat Rooms</Text>
       </View>
 
       {loading ? (
         <Text style={styles.statusText}>Loading chats...</Text>
       ) : (
         <>
+          {rooms.length === 0 && (
+            <Text style={styles.noClubMessage}>Enroll in a club!</Text>
+          )}
+
           <FlatList
             data={rooms}
             keyExtractor={item => item.id}
@@ -270,14 +322,81 @@ export default function ChatRoomsScreen() {
             }}
           />
 
-          <Pressable
-            style={styles.floatingJoinButton}
-            onPress={() => router.push("/join-club")}
-          >
-            <Text style={styles.floatingJoinButtonText}>Join Club</Text>
-          </Pressable>
+          <View style={styles.floatingButtonsWrap}>
+            <Pressable
+              style={styles.floatingCreateButton}
+              onPress={() => setShowCreateClubModal(true)}
+            >
+              <Text style={styles.floatingCreateButtonText}>Create Club</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.floatingJoinButton}
+              onPress={() => router.push("/join-club")}
+            >
+              <Text style={styles.floatingJoinButtonText}>Join Club</Text>
+            </Pressable>
+          </View>
         </>
       )}
+
+      <Modal
+        visible={showCreateClubModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!creatingClub) {
+            setShowCreateClubModal(false);
+          }
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Create Club</Text>
+
+            <TextInput
+              placeholder="Enter club name"
+              placeholderTextColor="#6B7280"
+              value={newClubName}
+              onChangeText={setNewClubName}
+              autoCapitalize="characters"
+              style={styles.modalInput}
+            />
+
+            <Text style={styles.positionLabel}>Position</Text>
+            <TextInput
+              value="President"
+              editable={false}
+              style={[styles.modalInput, styles.disabledInput]}
+            />
+
+            <View style={styles.modalButtonsRow}>
+              <Pressable
+                style={styles.modalCancelButton}
+                onPress={() => {
+                  if (!creatingClub) {
+                    setShowCreateClubModal(false);
+                    setNewClubName("");
+                  }
+                }}
+                disabled={creatingClub}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.modalCreateButton}
+                onPress={handleCreateClub}
+                disabled={creatingClub}
+              >
+                <Text style={styles.modalCreateText}>
+                  {creatingClub ? "Creating..." : "Create Club"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -305,7 +424,7 @@ const styles = StyleSheet.create({
     color: "#6B7280"
   },
   listContent: {
-    paddingBottom: 110
+    paddingBottom: 180
   },
   chatRow: {
     flexDirection: "row",
@@ -370,11 +489,36 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     minWidth: 62
   },
-  floatingJoinButton: {
+  floatingButtonsWrap: {
     position: "absolute",
     left: 16,
     right: 16,
-    bottom: 50,
+    bottom: 50
+  },
+  floatingCreateButton: {
+    backgroundColor: "white",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#7b97d4",
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 3
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 6
+  },
+  floatingCreateButtonText: {
+    color: "#7b97d4",
+    fontSize: 16,
+    fontWeight: "600"
+  },
+  floatingJoinButton: {
     backgroundColor: "#7b97d4",
     paddingVertical: 14,
     borderRadius: 12,
@@ -393,5 +537,76 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 16,
     fontWeight: "600"
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    paddingHorizontal: 24
+  },
+  modalCard: {
+    backgroundColor: "white",
+    borderRadius: 14,
+    padding: 18
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 12,
+    textAlign: "center"
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+    color: "#111827"
+  },
+  positionLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 6
+  },
+  disabledInput: {
+    backgroundColor: "#F3F4F6",
+    color: "#6B7280"
+  },
+  modalButtonsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between"
+  },
+  modalCancelButton: {
+    flex: 1,
+    marginRight: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    alignItems: "center"
+  },
+  modalCancelText: {
+    color: "#374151",
+    fontWeight: "600"
+  },
+  modalCreateButton: {
+    flex: 1,
+    marginLeft: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: "#7b97d4",
+    alignItems: "center"
+  },
+  modalCreateText: {
+    color: "white",
+    fontWeight: "600"
+  },
+  noClubMessage: {
+    marginTop: 20,
+    textAlign: "center",
+    fontSize: 14,
+    color: "#6B7280"
   }
 });

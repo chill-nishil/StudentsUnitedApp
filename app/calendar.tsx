@@ -1,5 +1,5 @@
 import { db } from "@/FirebaseConfig";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import {
   collection,
@@ -10,7 +10,7 @@ import {
   query,
   where
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -35,17 +35,33 @@ type Event = {
 };
 
 export default function CalendarScreen() {
+  const params = useLocalSearchParams();
+  const selectedClubId =
+    typeof params.clubId === "string" ? params.clubId : "";
+
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedDate, setSelectedDate] = useState("");
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
 
   useEffect(() => {
     const auth = getAuth();
-
     let unsubEvents: (() => void) | null = null;
+    let deniedAlertShown = false;
 
     const unsubAuth = onAuthStateChanged(auth, async user => {
+      if (unsubEvents) {
+        unsubEvents();
+        unsubEvents = null;
+      }
+
       if (!user) {
         setEvents([]);
+        return;
+      }
+
+      if (!selectedClubId) {
+        setEvents([]);
+        Alert.alert("Missing club", "No club was selected for this calendar.");
         return;
       }
 
@@ -58,27 +74,36 @@ export default function CalendarScreen() {
       }
 
       const userData = userSnap.data();
-      const clubId = userData.clubId;
+      const clubIds: string[] = Array.isArray(userData.clubIds)
+        ? userData.clubIds
+        : [];
 
-      if (!clubId) {
+      if (!clubIds.includes(selectedClubId)) {
         setEvents([]);
+
+        if (!deniedAlertShown) {
+          deniedAlertShown = true;
+          Alert.alert("Access denied", "You are not a member of this club.");
+        }
+
         return;
       }
 
       const q = query(
         collection(db, "events"),
-        where("clubId", "==", clubId),
+        where("clubId", "==", selectedClubId),
         orderBy("date", "asc")
       );
 
       unsubEvents = onSnapshot(q, snapshot => {
-        const list = snapshot.docs.map(docItem => {
+        const list: Event[] = snapshot.docs.map(docItem => {
           const data = docItem.data();
+
           return {
             id: docItem.id,
-            title: data.title,
-            date: data.date,
-            description: data.description,
+            title: data.title ?? "",
+            date: data.date ?? null,
+            description: data.description ?? "",
             location: data.location ?? "",
             locationAddress: data.locationAddress ?? "",
             eventType: data.eventType ?? "all-day",
@@ -93,11 +118,19 @@ export default function CalendarScreen() {
 
     return () => {
       unsubAuth();
+
       if (unsubEvents) {
         unsubEvents();
       }
     };
-  }, []);
+  }, [selectedClubId]);
+
+  const monthTitle = useMemo(() => {
+    return calendarMonth.toLocaleDateString([], {
+      month: "long",
+      year: "numeric"
+    });
+  }, [calendarMonth]);
 
   const getSafeLocationText = (location: any) => {
     if (!location) return "";
@@ -129,7 +162,11 @@ export default function CalendarScreen() {
       return "All-Day";
     }
 
-    if (item.eventType === "time" && item.startDate?.toDate && item.endDate?.toDate) {
+    if (
+      item.eventType === "time" &&
+      item.startDate?.toDate &&
+      item.endDate?.toDate
+    ) {
       const startText = item.startDate.toDate().toLocaleTimeString([], {
         hour: "numeric",
         minute: "2-digit"
@@ -202,7 +239,7 @@ export default function CalendarScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>January 2026</Text>
+      <Text style={styles.header}>{monthTitle}</Text>
 
       <Calendar
         markedDates={markedDates}
@@ -210,6 +247,9 @@ export default function CalendarScreen() {
           setSelectedDate(prev =>
             prev === day.dateString ? "" : day.dateString
           );
+        }}
+        onMonthChange={month => {
+          setCalendarMonth(new Date(month.year, month.month - 1, 1));
         }}
       />
 
@@ -220,7 +260,14 @@ export default function CalendarScreen() {
 
         <Pressable
           style={styles.addButton}
-          onPress={() => router.push("/add-event")}
+          onPress={() =>
+            router.push({
+              pathname: "/add-event",
+              params: {
+                clubId: selectedClubId
+              }
+            })
+          }
         >
           <Text style={styles.addButtonText}>Add Event</Text>
         </Pressable>

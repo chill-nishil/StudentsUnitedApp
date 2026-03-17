@@ -2,13 +2,7 @@ import { auth, db } from "@/FirebaseConfig";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import {
-  addDoc,
-  collection,
-  doc,
-  setDoc,
-  updateDoc
-} from "firebase/firestore";
+import { doc, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
   Image,
@@ -39,7 +33,7 @@ export default function CreateAccountScreen() {
   const handleCreateAccount = async () => {
     console.log("CREATE ACCOUNT START");
 
-    if (!name || !email || !password || !confirmPassword || !position) {
+    if (!name.trim() || !email.trim() || !password || !confirmPassword) {
       alert("Please fill out all required fields");
       return;
     }
@@ -49,10 +43,10 @@ export default function CreateAccountScreen() {
       return;
     }
 
-    if (isPresident && !clubName) {
-      alert("Please enter your club name");
-      return;
-    }
+    // if (isPresident && !clubName) {
+    //   alert("Please enter your club name");
+    //   return;
+    // }
 
     const normalizedClubName = isPresident ? clubName.trim().toUpperCase() : null;
 
@@ -61,8 +55,13 @@ export default function CreateAccountScreen() {
 
       console.log("CREATING AUTH USER");
 
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const cleanEmail = email.trim();
 
+      const cred = await createUserWithEmailAndPassword(
+        auth,
+        cleanEmail,
+        password
+      );
       const uid = cred.user.uid;
       console.log("AUTH USER CREATED:", uid);
 
@@ -70,9 +69,9 @@ export default function CreateAccountScreen() {
 
       await setDoc(doc(db, "users", uid), {
         uid,
-        name,
-        email,
-        position,
+        name: name.trim(),
+        email: cleanEmail,
+        // position,
         clubName: normalizedClubName,
         clubIds: [],
         clubNames: [],
@@ -82,31 +81,7 @@ export default function CreateAccountScreen() {
 
       console.log("USER DOC CREATED");
 
-      if (isPresident) {
-        console.log("CREATING CLUB");
-
-        const clubRef = await addDoc(collection(db, "clubs"), {
-          name: normalizedClubName,
-          presidentId: uid,
-          members: [uid],
-          joinRequests: []
-        });
-
-        console.log("CLUB CREATED:", clubRef.id);
-
-        await updateDoc(doc(db, "users", uid), {
-          clubId: clubRef.id,
-          clubName: normalizedClubName,
-          clubIds: [clubRef.id],
-          clubNames: [normalizedClubName],
-          pendingClubRequests: [],
-          [`lastReadByClub.${clubRef.id}`]: new Date()
-        });
-
-        console.log("USER UPDATED WITH CLUB ID");
-      }
-
-      router.push(`/chat-room?uid=${uid}`);
+      router.replace("/chat-dashboard");
     } catch (e: any) {
       console.error("CREATE ACCOUNT ERROR:", e);
       alert(e.message);
@@ -142,7 +117,7 @@ export default function CreateAccountScreen() {
           />
 
           <TextInput
-            placeholder="School email"
+            placeholder="Email"
             placeholderTextColor="#6B7280"
             value={email}
             onChangeText={setEmail}
@@ -186,6 +161,7 @@ export default function CreateAccountScreen() {
             </Pressable>
           </View>
 
+          {/* 
           <TextInput
             placeholder="Position (e.g. President, Member)"
             placeholderTextColor="#6B7280"
@@ -193,7 +169,9 @@ export default function CreateAccountScreen() {
             onChangeText={setPosition}
             style={styles.input}
           />
+          */}
 
+          {/* 
           {isPresident && (
             <TextInput
               placeholder="Club name"
@@ -203,6 +181,7 @@ export default function CreateAccountScreen() {
               style={styles.input}
             />
           )}
+          */}
 
           <Pressable
             style={[styles.button, loading && styles.disabled]}

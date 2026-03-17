@@ -34,7 +34,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  // TouchableWithoutFeedback,
   View
 } from "react-native";
 
@@ -42,7 +41,7 @@ type Message = {
   id: string;
   message: string;
   senderName: string;
-  senderUid?: string; // ADDED
+  senderUid?: string;
   position: string;
   createdAt: any;
   reactions?: {
@@ -51,7 +50,6 @@ type Message = {
   mediaBase64?: string;
 };
 
-// ADDED: date helpers
 function isValidDate(d: any): d is Date {
   return d instanceof Date && !isNaN(d.getTime());
 }
@@ -142,7 +140,6 @@ function isMessageAfterCutoff(messageCreatedAt: any, cutoff: any): boolean {
   return messageDate.getTime() > cutoffDate.getTime();
 }
 
-
 export default function ChatScreen() {
   const auth = getAuth();
   const [currentUid, setCurrentUid] = useState<string | null>(null);
@@ -175,19 +172,16 @@ export default function ChatScreen() {
   const [pendingMediaBase64, setPendingMediaBase64] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
 
-  // ADDED: chat background image
   const [chatBackgroundBase64, setChatBackgroundBase64] = useState<string | null>(null);
   const [isPickingBackground, setIsPickingBackground] = useState(false);
 
   const hasBackground = !!chatBackgroundBase64;
 
-  // ADDED: pinned message state
   const [pinnedMessageId, setPinnedMessageId] = useState<string | null>(null);
   const [pinnedPreview, setPinnedPreview] = useState<string | null>(null);
   const [pinnedSenderName, setPinnedSenderName] = useState<string | null>(null);
   const [pinnedCreatedAt, setPinnedCreatedAt] = useState<any>(null);
 
-  // ADDED: FlatList ref to scroll to pinned message
   const listRef = useRef<FlatList<Message>>(null);
 
   const params = useLocalSearchParams<{ clubId?: string; clubName?: string }>();
@@ -199,47 +193,47 @@ export default function ChatScreen() {
   const unreadTimerRef = useRef<any>(null);
 
   useEffect(() => {
-  if (!currentUid || !userClubId) return;
+    if (!currentUid || !userClubId) return;
 
-  const userRef = doc(db, "users", currentUid);
+    const userRef = doc(db, "users", currentUid);
 
-  getDocs(query(collection(db, "users"), where("uid", "==", currentUid)))
-    .then(async snap => {
-      if (snap.empty) return;
+    getDocs(query(collection(db, "users"), where("uid", "==", currentUid)))
+      .then(async snap => {
+        if (snap.empty) return;
 
-      const data = snap.docs[0].data();
-      const previousLastRead = data.lastReadByClub?.[userClubId] || null;
+        const data = snap.docs[0].data();
+        const previousLastRead = data.lastReadByClub?.[userClubId] || null;
 
-      setUnreadCutoff(previousLastRead);
+        setUnreadCutoff(previousLastRead);
 
-      if (previousLastRead) {
-        setShowUnreadHighlight(true);
+        if (previousLastRead) {
+          setShowUnreadHighlight(true);
 
-        if (unreadTimerRef.current) {
-          clearTimeout(unreadTimerRef.current);
+          if (unreadTimerRef.current) {
+            clearTimeout(unreadTimerRef.current);
+          }
+
+          unreadTimerRef.current = setTimeout(() => {
+            setShowUnreadHighlight(false);
+          }, 1000);
+        } else {
+          setShowUnreadHighlight(false);
         }
 
-        unreadTimerRef.current = setTimeout(() => {
-          setShowUnreadHighlight(false);
-        }, 1000);
-      } else {
-        setShowUnreadHighlight(false);
-      }
-
-      await updateDoc(userRef, {
-        [`lastReadByClub.${userClubId}`]: serverTimestamp()
+        await updateDoc(userRef, {
+          [`lastReadByClub.${userClubId}`]: serverTimestamp()
+        });
+      })
+      .catch((e: any) => {
+        console.log("READ_UPDATE_ERROR", e?.code, e?.message, e);
       });
-    })
-    .catch((e: any) => {
-      console.log("READ_UPDATE_ERROR", e?.code, e?.message, e);
-    });
 
-  return () => {
-    if (unreadTimerRef.current) {
-      clearTimeout(unreadTimerRef.current);
-    }
-  };
-}, [currentUid, userClubId]);
+    return () => {
+      if (unreadTimerRef.current) {
+        clearTimeout(unreadTimerRef.current);
+      }
+    };
+  }, [currentUid, userClubId]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, user => {
@@ -273,12 +267,15 @@ export default function ChatScreen() {
     setUserName(data.name || "");
     setPosition(data.position || "");
 
+    const userClubIds = Array.isArray(data.clubIds) ? data.clubIds : [];
+    const userClubNames = Array.isArray(data.clubNames) ? data.clubNames : [];
+
     if (selectedClubId) {
       setUserClubId(selectedClubId);
       setClubName(selectedClubName || "Club Chat");
-    } else if (data.clubId) {
-      setUserClubId(data.clubId);
-      setClubName(data.clubName || "Club Chat");
+    } else if (userClubIds.length > 0) {
+      setUserClubId(userClubIds[0]);
+      setClubName(userClubNames[0] || "Club Chat");
     } else {
       router.replace(`/join-club?uid=${currentUid}`);
     }
@@ -302,7 +299,7 @@ export default function ChatScreen() {
           id: d.id,
           message: data.message,
           senderName: data.senderName,
-          senderUid: data.senderUid, // ADDED
+          senderUid: data.senderUid,
           position: data.position,
           createdAt: data.createdAt,
           reactions: data.reactions || {},
@@ -320,177 +317,211 @@ export default function ChatScreen() {
 
     const clubRef = doc(db, "clubs", userClubId);
 
-    const unsub = onSnapshot(clubRef, snap => {
+    const unsub = onSnapshot(clubRef, async snap => {
       if (!snap.exists()) return;
 
       const data = snap.data();
 
       setIsPresident(data.presidentId === currentUid);
-
-      // ADDED: background image from club doc
       setChatBackgroundBase64(data.chatBackgroundBase64 || null);
-
-      // ADDED: pinned message from club doc
       setPinnedMessageId(data.pinnedMessageId || null);
       setPinnedPreview(data.pinnedPreview || null);
       setPinnedSenderName(data.pinnedSenderName || null);
       setPinnedCreatedAt(data.pinnedCreatedAt || null);
 
-      const requests = data.joinRequests || [];
+      const requests = Array.isArray(data.joinRequests) ? data.joinRequests : [];
 
-      if (requests.length > 0) {
-        getDocs(query(collection(db, "users"), where("uid", "in", requests))).then(usersSnap => {
-          setRequestUsers(usersSnap.docs.map(d => d.data()));
-        });
-      } else {
+      if (requests.length === 0) {
         setRequestUsers([]);
+        return;
       }
+
+      if (typeof requests[0] === "string") {
+        const usersSnap = await getDocs(
+          query(collection(db, "users"), where("uid", "in", requests))
+        );
+
+        setRequestUsers(
+          usersSnap.docs.map(d => {
+            const userData = d.data();
+            return {
+              uid: userData.uid,
+              name: userData.name || "Unknown User",
+              position: userData.position || ""
+            };
+          })
+        );
+        return;
+      }
+
+      setRequestUsers(
+        requests.map((request: any) => ({
+          uid: request.uid,
+          name: request.name || "Unknown User",
+          position: request.position || "",
+          requestedAt: request.requestedAt || null,
+          rawRequest: request
+        }))
+      );
     });
 
     return unsub;
   }, [userClubId, currentUid]);
 
   async function refreshClubLastMessage(clubId: string) {
-  const latestQuery = query(
-    collection(db, "chats"),
-    where("clubId", "==", clubId),
-    orderBy("createdAt", "desc"),
-    limit(1)
-  );
-
-  const latestSnap = await getDocs(latestQuery);
-  const clubRef = doc(db, "clubs", clubId);
-
-  if (latestSnap.empty) {
-    await updateDoc(clubRef, {
-      lastMessage: "",
-      lastMessageSender: "",
-      lastMessageTime: null
-    });
-    return;
-  }
-
-  const latestData = latestSnap.docs[0].data();
-
-  const latestText =
-    latestData.message && latestData.message.trim()
-      ? latestData.message.trim()
-      : latestData.mediaBase64
-      ? "Photo"
-      : "";
-
-  await updateDoc(clubRef, {
-    lastMessage: latestText,
-    lastMessageSender: latestData.senderName || "",
-    lastMessageTime: latestData.createdAt || null
-  });
-}
-
-  async function acceptJoinRequest(requestUid: string) {
-  if (!userClubId) return;
-  if (!clubName) return;
-
-  const clubRef = doc(db, "clubs", userClubId);
-  const userRef = doc(db, "users", requestUid);
-
-  await updateDoc(clubRef, {
-    members: arrayUnion(requestUid),
-    joinRequests: arrayRemove(requestUid)
-  });
-
-  await updateDoc(userRef, {
-    clubIds: arrayUnion(userClubId),
-    clubNames: arrayUnion(clubName),
-    pendingClubRequests: arrayRemove(userClubId),
-
-    clubId: userClubId,
-    clubName: clubName
-  });
-}
-
-  async function rejectJoinRequest(requestUid: string) {
-  if (!userClubId) return;
-
-  const clubRef = doc(db, "clubs", userClubId);
-  const userRef = doc(db, "users", requestUid);
-
-  await updateDoc(clubRef, {
-    joinRequests: arrayRemove(requestUid)
-  });
-
-  await updateDoc(userRef, {
-    pendingClubRequests: arrayRemove(userClubId)
-  });
-}
-
-  async function sendMessage() {
-  if (!userName || !userClubId) return;
-  if (isSending) return;
-
-  const trimmed = input.trim();
-  const hasText = !!trimmed;
-  const hasMedia = !!pendingMediaBase64;
-
-  if (!hasText && !hasMedia) return;
-
-  if (hasText && containsProfanity(trimmed)) {
-    Alert.alert(
-      "Profanity Check",
-      "Inappropriate language is not allowed!"
+    const latestQuery = query(
+      collection(db, "chats"),
+      where("clubId", "==", clubId),
+      orderBy("createdAt", "desc"),
+      limit(1)
     );
-    return;
-  }
 
-  const prevInput = input;
-  const prevMedia = pendingMediaBase64;
+    const latestSnap = await getDocs(latestQuery);
+    const clubRef = doc(db, "clubs", clubId);
 
-  setIsSending(true);
-  setInput("");
-  setPendingMediaBase64(null);
-
-  try {
-    await addDoc(collection(db, "chats"), {
-      message: hasText ? trimmed : "",
-      senderName: userName,
-      senderUid: currentUid,
-      position: position,
-      clubId: userClubId,
-      createdAt: serverTimestamp(),
-      reactions: {},
-      ...(hasMedia ? { mediaBase64: prevMedia } : {})
-    });
-
-    const clubRef = doc(db, "clubs", userClubId);
-
-    let previewText = "";
-    if (hasText) {
-      previewText = trimmed;
-    } else if (hasMedia) {
-      previewText = "Photo";
+    if (latestSnap.empty) {
+      await updateDoc(clubRef, {
+        lastMessage: "",
+        lastMessageSender: "",
+        lastMessageTime: null
+      });
+      return;
     }
 
+    const latestData = latestSnap.docs[0].data();
+
+    const latestText =
+      latestData.message && latestData.message.trim()
+        ? latestData.message.trim()
+        : latestData.mediaBase64
+        ? "Photo"
+        : "";
+
     await updateDoc(clubRef, {
-      lastMessage: previewText,
-      lastMessageSender: userName,
-      lastMessageTime: serverTimestamp()
+      lastMessage: latestText,
+      lastMessageSender: latestData.senderName || "",
+      lastMessageTime: latestData.createdAt || null
+    });
+  }
+
+  async function acceptJoinRequest(requestItem: any) {
+    if (!userClubId) return;
+    if (!clubName) return;
+
+    const requestUid =
+      typeof requestItem === "string" ? requestItem : requestItem?.uid;
+    const requestPosition =
+      typeof requestItem === "string" ? "" : requestItem?.position || "";
+    const requestToRemove =
+      requestItem?.rawRequest ?? requestItem;
+
+    if (!requestUid) return;
+
+    const clubRef = doc(db, "clubs", userClubId);
+    const userRef = doc(db, "users", requestUid);
+
+    await updateDoc(clubRef, {
+      members: arrayUnion(requestUid),
+      joinRequests: arrayRemove(requestToRemove)
     });
 
-    const userRef = doc(db, "users", currentUid!);
+    await updateDoc(userRef, {
+      ...(requestPosition ? { position: requestPosition } : {}),
+      clubIds: arrayUnion(userClubId),
+      clubNames: arrayUnion(clubName),
+      pendingClubRequests: arrayRemove(userClubId)
+    });
+  }
+
+  async function rejectJoinRequest(requestItem: any) {
+    if (!userClubId) return;
+
+    const requestUid =
+      typeof requestItem === "string" ? requestItem : requestItem?.uid;
+    const requestToRemove =
+      requestItem?.rawRequest ?? requestItem;
+
+    if (!requestUid) return;
+
+    const clubRef = doc(db, "clubs", userClubId);
+    const userRef = doc(db, "users", requestUid);
+
+    await updateDoc(clubRef, {
+      joinRequests: arrayRemove(requestToRemove)
+    });
+
+    await updateDoc(userRef, {
+      pendingClubRequests: arrayRemove(userClubId)
+    });
+  }
+
+  async function sendMessage() {
+    if (!userName || !userClubId) return;
+    if (isSending) return;
+
+    const trimmed = input.trim();
+    const hasText = !!trimmed;
+    const hasMedia = !!pendingMediaBase64;
+
+    if (!hasText && !hasMedia) return;
+
+    if (hasText && containsProfanity(trimmed)) {
+      Alert.alert(
+        "Profanity Check",
+        "Inappropriate language is not allowed!"
+      );
+      return;
+    }
+
+    const prevInput = input;
+    const prevMedia = pendingMediaBase64;
+
+    setIsSending(true);
+    setInput("");
+    setPendingMediaBase64(null);
+
+    try {
+      await addDoc(collection(db, "chats"), {
+        message: hasText ? trimmed : "",
+        senderName: userName,
+        senderUid: currentUid,
+        position: position,
+        clubId: userClubId,
+        createdAt: serverTimestamp(),
+        reactions: {},
+        ...(hasMedia ? { mediaBase64: prevMedia } : {})
+      });
+
+      const clubRef = doc(db, "clubs", userClubId);
+
+      let previewText = "";
+      if (hasText) {
+        previewText = trimmed;
+      } else if (hasMedia) {
+        previewText = "Photo";
+      }
+
+      await updateDoc(clubRef, {
+        lastMessage: previewText,
+        lastMessageSender: userName,
+        lastMessageTime: serverTimestamp()
+      });
+
+      const userRef = doc(db, "users", currentUid!);
 
       await updateDoc(userRef, {
         [`lastReadByClub.${userClubId}`]: serverTimestamp()
       });
 
-    listRef.current?.scrollToOffset({ offset: 0, animated: true });
-
-  } catch (e: any) {
-    console.log("SEND_ERROR", e?.code, e?.message, e);
-    setInput(prevInput);
-    setPendingMediaBase64(prevMedia);
-  } finally {
-    setIsSending(false);
+      listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    } catch (e: any) {
+      console.log("SEND_ERROR", e?.code, e?.message, e);
+      setInput(prevInput);
+      setPendingMediaBase64(prevMedia);
+    } finally {
+      setIsSending(false);
+    }
   }
-}
 
   async function pickMedia() {
     if (isPickingMedia) return;
@@ -504,7 +535,7 @@ export default function ChatScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
-        aspect: [9, 16], // vertical rectangle
+        aspect: [9, 16],
         quality: 0.3
       });
 
@@ -533,7 +564,6 @@ export default function ChatScreen() {
     }
   }
 
-  // ADDED: president sets chat background image on the club doc
   async function pickChatBackground() {
     if (!isPresident) return;
     if (!userClubId) return;
@@ -548,7 +578,7 @@ export default function ChatScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
-        aspect: [9, 16], // vertical rectangle
+        aspect: [9, 16],
         quality: 0.3
       });
 
@@ -628,55 +658,54 @@ export default function ChatScreen() {
   }
 
   function confirmDeleteMessage(messageId: string, senderUid?: string) {
-  if (!userClubId) return;
-  if (!currentUid) return;
+    if (!userClubId) return;
+    if (!currentUid) return;
 
-  const isOwnMessage = !!senderUid && senderUid === currentUid;
-  const canDelete = isPresident || isOwnMessage;
+    const isOwnMessage = !!senderUid && senderUid === currentUid;
+    const canDelete = isPresident || isOwnMessage;
 
-  if (!canDelete) return;
+    if (!canDelete) return;
 
-  Alert.alert("Delete message?", "This will remove the message for everyone.", [
-    { text: "Cancel", style: "cancel" },
-    {
-      text: "Delete",
-      style: "destructive",
-      onPress: async () => {
-        try {
-          await deleteDoc(doc(db, "chats", messageId));
+    Alert.alert("Delete message?", "This will remove the message for everyone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, "chats", messageId));
 
-          if (userClubId) {
-            await refreshClubLastMessage(userClubId);
+            if (userClubId) {
+              await refreshClubLastMessage(userClubId);
+            }
+          } catch (e: any) {
+            console.log("DELETE_ERROR", e?.code, e?.message, e);
           }
-        } catch (e: any) {
-          console.log("DELETE_ERROR", e?.code, e?.message, e);
         }
       }
-    }
-  ]);
-}
-
-  // ADDED: pin helpers
-  async function pinMessage(item: Message) {
-  if (!userClubId) return;
-  if (!isPresident) return;
-
-  const clubRef = doc(db, "clubs", userClubId);
-
-  const textPreview = (item.message || "").trim();
-  const mediaOnlyPreview = item.mediaBase64 ? "Photo" : "";
-  const preview = textPreview ? textPreview : mediaOnlyPreview;
-
-  try {
-    await updateDoc(clubRef, {
-      pinnedMessageId: item.id,
-      pinnedPreview: preview,
-      pinnedSenderName: item.senderName,
-      pinnedCreatedAt: item.createdAt
-    });
-  } catch (e: any) {
-    console.log("PIN_ERROR", e?.code, e?.message, e);
+    ]);
   }
+
+  async function pinMessage(item: Message) {
+    if (!userClubId) return;
+    if (!isPresident) return;
+
+    const clubRef = doc(db, "clubs", userClubId);
+
+    const textPreview = (item.message || "").trim();
+    const mediaOnlyPreview = item.mediaBase64 ? "Photo" : "";
+    const preview = textPreview ? textPreview : mediaOnlyPreview;
+
+    try {
+      await updateDoc(clubRef, {
+        pinnedMessageId: item.id,
+        pinnedPreview: preview,
+        pinnedSenderName: item.senderName,
+        pinnedCreatedAt: item.createdAt
+      });
+    } catch (e: any) {
+      console.log("PIN_ERROR", e?.code, e?.message, e);
+    }
   }
 
   async function unpinMessage() {
@@ -705,41 +734,40 @@ export default function ChatScreen() {
     try {
       listRef.current?.scrollToIndex({ index: idx, animated: true });
     } catch (e) {
-      // ignore
     }
   }
 
   function handleMessageLongPress(item: Message, canDelete: boolean) {
-  if (isPresident) {
-    const isPinned = !!pinnedMessageId && pinnedMessageId === item.id;
+    if (isPresident) {
+      const isPinned = !!pinnedMessageId && pinnedMessageId === item.id;
 
-    Alert.alert(
-      "Chat Options",
-      "",
-      [
-        {
-          text: isPinned ? "Unpin" : "Pin",
-          onPress: () => {
-            if (isPinned) {
-              unpinMessage();
-            } else {
-              pinMessage(item);
+      Alert.alert(
+        "Chat Options",
+        "",
+        [
+          {
+            text: isPinned ? "Unpin" : "Pin",
+            onPress: () => {
+              if (isPinned) {
+                unpinMessage();
+              } else {
+                pinMessage(item);
+              }
             }
-          }
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => confirmDeleteMessage(item.id, item.senderUid)
-        },
-        { text: "Cancel", style: "cancel" }
-      ]
-    );
-    return;
-  }
+          },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => confirmDeleteMessage(item.id, item.senderUid)
+          },
+          { text: "Cancel", style: "cancel" }
+        ]
+      );
+      return;
+    }
 
-  confirmDeleteMessage(item.id, item.senderUid);
-}
+    confirmDeleteMessage(item.id, item.senderUid);
+  }
 
   const EMOJI_REGEX = /^\p{Extended_Pictographic}$/u;
 
@@ -753,8 +781,8 @@ export default function ChatScreen() {
         createdAt && typeof createdAt?.toDate === "function"
           ? createdAt.toDate()
           : createdAt instanceof Date
-            ? createdAt
-            : null;
+          ? createdAt
+          : null;
 
       if (!d || isNaN(d.getTime())) return "";
       return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
@@ -815,7 +843,6 @@ export default function ChatScreen() {
         keyboardShouldPersistTaps="handled"
         inverted
         onScrollToIndexFailed={() => {
-          // ignore
         }}
         renderItem={({ item, index }) => {
           const timeLabel = formatTime(item.createdAt);
@@ -827,7 +854,7 @@ export default function ChatScreen() {
 
           const canDelete = isPresident || (!!currentUid && !!item.senderUid && item.senderUid === currentUid);
           const isPinnedRow = !!pinnedMessageId && pinnedMessageId === item.id;
-          
+
           const shouldHighlightUnread =
             showUnreadHighlight &&
             item.senderUid !== currentUid &&
@@ -853,11 +880,11 @@ export default function ChatScreen() {
                   disabled={!canDelete}
                 >
                   <View style={[
-                        styles.message,
-                        item.senderName === userName ? styles.myMessage : styles.otherMessage,
-                        isPinnedRow && styles.pinnedMessageOutline,
-                        shouldHighlightUnread && styles.unreadMessageHighlight
-                    ]}
+                    styles.message,
+                    item.senderName === userName ? styles.myMessage : styles.otherMessage,
+                    isPinnedRow && styles.pinnedMessageOutline,
+                    shouldHighlightUnread && styles.unreadMessageHighlight
+                  ]}
                   >
                     <Text style={styles.sender}>
                       {item.senderName} · {item.position}
@@ -1004,16 +1031,19 @@ export default function ChatScreen() {
               keyExtractor={item => item.uid}
               renderItem={({ item }) => (
                 <View style={{ marginBottom: 12 }}>
-                  <Text>{item.name}</Text>
+                  <Text style={{ fontWeight: "600" }}>{item.name}</Text>
+                  <Text style={{ color: "#6B7280", marginTop: 2 }}>
+                    {item.position ? item.position : "No position provided"}
+                  </Text>
 
                   <View style={{ flexDirection: "row", marginTop: 6 }}>
-                    <Pressable style={[styles.send, { marginRight: 8 }]} onPress={() => acceptJoinRequest(item.uid)}>
+                    <Pressable style={[styles.send, { marginRight: 8 }]} onPress={() => acceptJoinRequest(item)}>
                       <Text style={styles.sendText}>Accept</Text>
                     </Pressable>
 
                     <Pressable
                       style={[styles.send, { backgroundColor: "#9CA3AF" }]}
-                      onPress={() => rejectJoinRequest(item.uid)}
+                      onPress={() => rejectJoinRequest(item)}
                     >
                       <Text style={styles.sendText}>Reject</Text>
                     </Pressable>
@@ -1084,59 +1114,19 @@ export default function ChatScreen() {
   );
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={80}
-    >
-      {!!chatBackgroundBase64 ? (
-        <ImageBackground
-          source={{ uri: `data:image/jpeg;base64,${chatBackgroundBase64}` }}
-          style={{ flex: 1 }}
-          resizeMode="cover"
+  <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === "ios" ? "padding" : "height"}
+    keyboardVerticalOffset={80}
+  >
+    {(() => {
+      const ChatScreenContent = (
+        <View
+          style={[
+            styles.container,
+            chatBackgroundBase64 && { backgroundColor: "transparent" }
+          ]}
         >
-          <View style={styles.screenOverlay}>
-            <View style={[styles.container, { backgroundColor: "transparent" }]}>
-              <Text style={styles.clubHeader}>{clubName}</Text>
-
-              <Text style={styles.userHeader}>
-                {userName} · {position}
-              </Text>
-
-              <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
-                <Pressable style={styles.openCalendarButton} onPress={() => router.push("/calendar")}>
-                  <Text style={styles.openCalendarText}>View Calendar</Text>
-                </Pressable>
-
-                {isPresident && (
-                  <Pressable style={styles.openCalendarButton} onPress={() => setShowRequestsModal(true)}>
-                    <Text style={styles.openCalendarText}>Join Requests</Text>
-                  </Pressable>
-                )}
-              </View>
-
-              {isPresident && (
-                <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
-                  <Pressable
-                    style={styles.openCalendarButton}
-                    onPress={pickChatBackground}
-                    disabled={isPickingBackground}
-                  >
-                    <Text style={styles.openCalendarText}>{isPickingBackground ? "..." : "Chat Background"}</Text>
-                  </Pressable>
-
-                  <Pressable style={styles.openCalendarButton} onPress={clearChatBackground}>
-                    <Text style={styles.openCalendarText}>Remove Background</Text>
-                  </Pressable>
-                </View>
-              )}
-
-              <View style={styles.chatArea}>{ChatBody}</View>
-            </View>
-          </View>
-        </ImageBackground>
-      ) : (
-        <View style={styles.container}>
           <Text style={styles.clubHeader}>{clubName}</Text>
 
           <Text style={styles.userHeader}>
@@ -1144,12 +1134,23 @@ export default function ChatScreen() {
           </Text>
 
           <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
-            <Pressable style={styles.openCalendarButton} onPress={() => router.push("/calendar")}>
-              <Text style={styles.openCalendarText}>Add Event</Text>
+            <Pressable
+              style={styles.openCalendarButton}
+              onPress={() =>
+                router.push({
+                  pathname: "/calendar",
+                  params: { clubId: selectedClubId }
+                })
+              }
+            >
+              <Text style={styles.openCalendarText}>View Calendar</Text>
             </Pressable>
 
             {isPresident && (
-              <Pressable style={styles.openCalendarButton} onPress={() => setShowRequestsModal(true)}>
+              <Pressable
+                style={styles.openCalendarButton}
+                onPress={() => setShowRequestsModal(true)}
+              >
                 <Text style={styles.openCalendarText}>Join Requests</Text>
               </Pressable>
             )}
@@ -1157,12 +1158,21 @@ export default function ChatScreen() {
 
           {isPresident && (
             <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
-              <Pressable style={styles.openCalendarButton} onPress={pickChatBackground} disabled={isPickingBackground}>
-                <Text style={styles.openCalendarText}>{isPickingBackground ? "..." : "Chat Background"}</Text>
+              <Pressable
+                style={styles.openCalendarButton}
+                onPress={pickChatBackground}
+                disabled={isPickingBackground}
+              >
+                <Text style={styles.openCalendarText}>
+                  {isPickingBackground ? "..." : "Chat Background"}
+                </Text>
               </Pressable>
 
               {!!chatBackgroundBase64 && (
-                <Pressable style={styles.openCalendarButton} onPress={clearChatBackground}>
+                <Pressable
+                  style={styles.openCalendarButton}
+                  onPress={clearChatBackground}
+                >
                   <Text style={styles.openCalendarText}>Remove Background</Text>
                 </Pressable>
               )}
@@ -1171,9 +1181,22 @@ export default function ChatScreen() {
 
           <View style={styles.chatArea}>{ChatBody}</View>
         </View>
-      )}
-    </KeyboardAvoidingView>
-  );
+      );
+
+      return chatBackgroundBase64 ? (
+        <ImageBackground
+          source={{ uri: `data:image/jpeg;base64,${chatBackgroundBase64}` }}
+          style={{ flex: 1 }}
+          resizeMode="cover"
+        >
+          <View style={styles.screenOverlay}>{ChatScreenContent}</View>
+        </ImageBackground>
+      ) : (
+        ChatScreenContent
+      );
+    })()}
+  </KeyboardAvoidingView>
+);
 }
 
 const styles = StyleSheet.create({
@@ -1194,8 +1217,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     color: "#000000"
   },
-
-  // ADDED: chat background wrappers
   chatArea: {
     flex: 1,
     marginTop: 10
@@ -1210,14 +1231,12 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: "rgba(255,255,255,0.35)"
   },
-
-  // ADDED: pinned banner styles
   pinnedWrap: {
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 10,
     borderWidth: 1,
-    minHeight:45,
+    minHeight: 45,
     borderColor: "#E5E7EB",
     backgroundColor: "rgba(255,255,255,0.85)",
     marginBottom: 10,
@@ -1238,12 +1257,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#111827",
     marginBottom: 2,
-    marginLeft:4
+    marginLeft: 4
   },
   pinnedText: {
     fontSize: 12,
     color: "#374151",
-    marginLeft:4
+    marginLeft: 4
   },
   pinnedMessageOutline: {
     borderWidth: 2,
@@ -1263,7 +1282,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6B7280"
   },
-
   sender: {
     fontSize: 12,
     fontWeight: "600",
@@ -1411,7 +1429,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 2
   },
-
   reactRow: {
     flexDirection: "row",
     alignItems: "center"
@@ -1442,7 +1459,6 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 6
   },
-
   pendingMediaWrap: {
     marginTop: 10,
     marginBottom: 6,
@@ -1487,8 +1503,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.25)"
   },
   unreadMessageHighlight: {
-  borderWidth: 2,
-  borderColor: "#25D366",
-  backgroundColor: "#DCFCE7"
+    borderWidth: 2,
+    borderColor: "#25D366",
+    backgroundColor: "#DCFCE7"
   }
 });

@@ -5,95 +5,137 @@ import {
   arrayUnion,
   collection,
   doc,
-  getDocs,
+  getDoc,
   onSnapshot,
-  query,
-  updateDoc,
-  where
+  updateDoc
 } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View
 } from "react-native";
 
+const POSITION_OPTIONS = [
+  "New Member",
+  "Recurring Member",
+  "Board Member",
+  "Other Position"
+] as const;
+
 export default function JoinClubScreen() {
   const auth = getAuth();
   const currentUid = auth.currentUser?.uid;
 
   const [searchText, setSearchText] = useState("");
-  const [clubResult, setClubResult] = useState<any | null>(null);
+  const [selectedPosition, setSelectedPosition] = useState("");
+  const [otherPosition, setOtherPosition] = useState("");
+  const [allClubs, setAllClubs] = useState<any[]>([]);
+  const [clubResults, setClubResults] = useState<any[]>([]);
   const [error, setError] = useState("");
   const [joinedClubIds, setJoinedClubIds] = useState<string[]>([]);
   const [pendingClubRequests, setPendingClubRequests] = useState<string[]>([]);
+  const [positionOpenClubId, setPositionOpenClubId] = useState<string | null>(null);
 
   const hasAutoNavigatedRef = useRef(false);
-
   const previousClubCount = useRef(0);
 
   useEffect(() => {
-    if (!currentUid) return;
+  if (!currentUid) return;
 
-    const q = query(collection(db, "users"), where("uid", "==", currentUid));
+  const userRef = doc(db, "users", currentUid);
 
-    const unsub = onSnapshot(q, snap => {
-      if (snap.empty) return;
+  const unsub = onSnapshot(userRef, snap => {
+    if (!snap.exists()) return;
 
-      const data = snap.docs[0].data();
+    const data = snap.data();
 
-      const nextJoinedClubIds = data.clubIds || [];
-      const nextPendingClubRequests = data.pendingClubRequests || [];
+    const nextJoinedClubIds = Array.isArray(data.clubIds) ? data.clubIds : [];
+    const nextPendingClubRequests = Array.isArray(data.pendingClubRequests)
+      ? data.pendingClubRequests
+      : [];
 
-      setJoinedClubIds(nextJoinedClubIds);
-      setPendingClubRequests(nextPendingClubRequests);
+    setJoinedClubIds(nextJoinedClubIds);
+    setPendingClubRequests(nextPendingClubRequests);
 
-      if (
-        nextJoinedClubIds.length > previousClubCount.current &&
-        previousClubCount.current !== 0
-      ) {
-        router.replace("/chat-dashboard");
-      }
+    if (
+      nextJoinedClubIds.length > previousClubCount.current &&
+      previousClubCount.current !== 0 &&
+      !hasAutoNavigatedRef.current
+    ) {
+      hasAutoNavigatedRef.current = true;
+      router.dismissTo("/chat-dashboard");
+    }
 
-      previousClubCount.current = nextJoinedClubIds.length;
+    previousClubCount.current = nextJoinedClubIds.length;
+  });
+
+  return unsub;
+}, [currentUid]);
+
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "clubs"), snap => {
+      const clubs = snap.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+      setAllClubs(clubs);
     });
 
     return unsub;
-  }, [currentUid]);
+  }, []);
 
-  async function searchClub() {
+  useEffect(() => {
+    const search = searchText.trim().toUpperCase();
+
     setError("");
-    setClubResult(null);
+    setSelectedPosition("");
+    setOtherPosition("");
+    setPositionOpenClubId(null);
 
-    const normalizedSearch = searchText.trim().toUpperCase();
-
-    if (!normalizedSearch) {
-      setError("Enter a club name");
+    if (!search) {
+      setClubResults([]);
       return;
     }
 
-    const q = query(
-      collection(db, "clubs"),
-      where("name", "==", normalizedSearch)
-    );
+    const words = search.split(/\s+/).filter(Boolean);
 
-    const snap = await getDocs(q);
+    const results = allClubs.filter(club => {
+      const clubName =
+        typeof club.name === "string" ? club.name.toUpperCase() : "";
 
-    if (snap.empty) {
-      setError("No club found");
-      return;
-    }
-
-    setClubResult({
-      id: snap.docs[0].id,
-      ...snap.docs[0].data()
+      return words.every(word => clubName.includes(word));
     });
-  }
 
-  async function sendJoinRequest() {
+    setClubResults(results);
+
+    if (results.length === 0) {
+      setError("No club found");
+    }
+  }, [searchText, allClubs]);
+
+  async function sendJoinRequest(clubResult: any) {
     if (!clubResult || !currentUid) return;
+
+    const cleanOtherPosition = otherPosition.trim();
+
+    let finalPosition = selectedPosition;
+
+    if (!selectedPosition) {
+      setError("Choose a position for this club");
+      return;
+    }
+
+    if (selectedPosition === "Other Position") {
+      if (!cleanOtherPosition) {
+        setError("Enter your position for this club");
+        return;
+      }
+      finalPosition = cleanOtherPosition;
+    }
 
     if (joinedClubIds.includes(clubResult.id)) {
       setError("You are already in this club");
@@ -107,9 +149,24 @@ export default function JoinClubScreen() {
 
     const clubRef = doc(db, "clubs", clubResult.id);
     const userRef = doc(db, "users", currentUid);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) {
+      setError("User profile not found");
+      return;
+    }
+
+    const userData = userSnap.data();
+    const requesterName =
+      typeof userData.name === "string" ? userData.name.trim() : "";
 
     await updateDoc(clubRef, {
-      joinRequests: arrayUnion(currentUid)
+      joinRequests: arrayUnion({
+        uid: currentUid,
+        name: requesterName,
+        position: finalPosition,
+        requestedAt: new Date()
+      })
     });
 
     await updateDoc(userRef, {
@@ -117,63 +174,134 @@ export default function JoinClubScreen() {
     });
 
     setError("");
+    setSelectedPosition("");
+    setOtherPosition("");
+    setPositionOpenClubId(null);
   }
 
-  const currentClubAlreadyRequested =
-    !!clubResult && pendingClubRequests.includes(clubResult.id);
-
-  const currentClubAlreadyJoined =
-    !!clubResult && joinedClubIds.includes(clubResult.id);
-
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.title}>Join a Club</Text>
 
       <TextInput
         placeholder="Enter club name"
+        placeholderTextColor="#4B5563"
         value={searchText}
         onChangeText={setSearchText}
         autoCapitalize="characters"
         style={styles.input}
       />
 
-      <Pressable style={styles.searchButton} onPress={searchClub}>
-        <Text style={styles.searchText}>Search</Text>
-      </Pressable>
+      <Text style={styles.searchHint}>Start typing to find clubs</Text>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {clubResult && (
-        <View style={styles.result}>
-          <Text style={styles.clubName}>{clubResult.name}</Text>
+      {clubResults.map(clubResult => {
+        const currentClubAlreadyRequested = pendingClubRequests.includes(clubResult.id);
+        const currentClubAlreadyJoined = joinedClubIds.includes(clubResult.id);
+        const positionOpen = positionOpenClubId === clubResult.id;
 
-          {currentClubAlreadyJoined ? (
-            <Text style={styles.pendingText}>
-              You are already in this club.
-            </Text>
-          ) : currentClubAlreadyRequested ? (
-            <Text style={styles.pendingText}>
-              Request sent. Waiting for approval.
-            </Text>
-          ) : (
-            <Pressable
-              style={styles.joinButton}
-              onPress={sendJoinRequest}
-            >
-              <Text style={styles.joinText}>Send Join Request</Text>
-            </Pressable>
-          )}
-        </View>
-      )}
-    </View>
+        return (
+          <View key={clubResult.id} style={styles.result}>
+            <Text style={styles.clubName}>{clubResult.name}</Text>
+
+            {currentClubAlreadyJoined ? (
+              <Text style={styles.pendingText}>
+                You are already in this club.
+              </Text>
+            ) : currentClubAlreadyRequested ? (
+              <Text style={styles.pendingText}>
+                Request sent. Waiting for approval.
+              </Text>
+            ) : (
+              <>
+                <Pressable
+                  style={styles.positionHeader}
+                  onPress={() => {
+                    if (positionOpen) {
+                      setPositionOpenClubId(null);
+                    } else {
+                      setPositionOpenClubId(clubResult.id);
+                      setSelectedPosition("");
+                      setOtherPosition("");
+                    }
+                  }}
+                >
+                  <Text style={styles.positionTitle}>
+                    Choose your position {positionOpen ? "▲" : "▼"}
+                  </Text>
+                </Pressable>
+
+                {positionOpen && (
+                  <View style={styles.positionOptionsWrap}>
+                    {POSITION_OPTIONS.map(option => {
+                      const isSelected = selectedPosition === option;
+
+                      return (
+                        <Pressable
+                          key={option}
+                          style={[
+                            styles.positionOption,
+                            isSelected && styles.positionOptionSelected
+                          ]}
+                          onPress={() => {
+                            setSelectedPosition(option);
+                            if (option !== "Other Position") {
+                              setOtherPosition("");
+                            }
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.positionOptionText,
+                              isSelected && styles.positionOptionTextSelected
+                            ]}
+                          >
+                            {option}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {positionOpen && selectedPosition === "Other Position" && (
+                  <TextInput
+                    placeholder="Enter your position"
+                    placeholderTextColor="#4B5563"
+                    value={otherPosition}
+                    onChangeText={setOtherPosition}
+                    style={styles.input}
+                  />
+                )}
+
+                <Pressable
+                  style={styles.joinButton}
+                  onPress={() => sendJoinRequest(clubResult)}
+                >
+                  <Text style={styles.joinText}>Send Join Request</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        );
+      })}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 24,
     backgroundColor: "white"
+  },
+  contentContainer: {
+    padding: 24,
+    paddingBottom: 120
   },
   title: {
     fontSize: 20,
@@ -188,13 +316,18 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 12
   },
+  searchHint: {
+    textAlign: "center",
+    color: "#6B7280",
+    marginBottom: 12
+  },
   error: {
     marginTop: 12,
     color: "red",
     textAlign: "center"
   },
   result: {
-    marginTop: 24,
+    marginTop: 16,
     padding: 16,
     borderWidth: 1,
     borderColor: "#ddd",
@@ -204,6 +337,37 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     marginBottom: 8
+  },
+  positionTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+    marginBottom: 10
+  },
+  positionOptionsWrap: {
+    marginBottom: 12
+  },
+  positionOption: {
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    backgroundColor: "white"
+  },
+  positionOptionSelected: {
+    backgroundColor: "#7b97d4",
+    borderColor: "#7b97d4"
+  },
+  positionOptionText: {
+    color: "#111827",
+    textAlign: "center",
+    fontWeight: "500"
+  },
+  positionOptionTextSelected: {
+    color: "white",
+    fontWeight: "600"
   },
   joinButton: {
     backgroundColor: "#222",
@@ -220,15 +384,7 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     fontSize: 14
   },
-  searchButton: {
-    backgroundColor: "#7b97d4",
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12
-  },
-  searchText: {
-    color: "white",
-    textAlign: "center",
-    fontWeight: "600"
+  positionHeader: {
+    marginBottom: 10
   }
 });

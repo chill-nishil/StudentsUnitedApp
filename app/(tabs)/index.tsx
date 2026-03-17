@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
     marginBottom: 8
   },
   forgotText: {
-    color: "#000000",
+    color: "#535353",
     fontSize: 14,
     textAlign: "left", 
     marginLeft: 4,
