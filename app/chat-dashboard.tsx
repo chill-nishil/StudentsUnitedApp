@@ -251,6 +251,10 @@ export default function ChatRoomsScreen() {
         position: "President",
         clubIds: arrayUnion(clubRef.id),
         clubNames: arrayUnion(normalizedName),
+        clubMemberships: arrayUnion({
+          clubId: clubRef.id,
+          position: "President"
+        }),
         [`lastReadByClub.${clubRef.id}`]: new Date()
       });
 

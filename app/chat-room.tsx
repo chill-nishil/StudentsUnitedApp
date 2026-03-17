@@ -255,34 +255,54 @@ export default function ChatScreen() {
   }, [showEmojiPicker]);
 
   useEffect(() => {
-  if (!currentUid) return;
+    if (!currentUid) return;
 
-  const userRef = doc(db, "users", currentUid);
+    const userRef = doc(db, "users", currentUid);
 
-  const unsub = onSnapshot(userRef, snap => {
-    if (!snap.exists()) return;
+    const unsub = onSnapshot(userRef, snap => {
+      if (!snap.exists()) return;
 
-    const data = snap.data();
+      const data = snap.data();
 
-    setUserName(data.name || "");
-    setPosition(data.position || "");
+      setUserName(data.name || "");
 
-    const userClubIds = Array.isArray(data.clubIds) ? data.clubIds : [];
-    const userClubNames = Array.isArray(data.clubNames) ? data.clubNames : [];
+      const userClubIds = Array.isArray(data.clubIds) ? data.clubIds : [];
+      const userClubNames = Array.isArray(data.clubNames) ? data.clubNames : [];
+      const clubMemberships = Array.isArray(data.clubMemberships) ? data.clubMemberships : [];
 
-    if (selectedClubId) {
-      setUserClubId(selectedClubId);
-      setClubName(selectedClubName || "Club Chat");
-    } else if (userClubIds.length > 0) {
-      setUserClubId(userClubIds[0]);
-      setClubName(userClubNames[0] || "Club Chat");
-    } else {
-      router.replace(`/join-club?uid=${currentUid}`);
-    }
-  });
+      let resolvedClubId: string | null = null;
+      let resolvedClubName = "Club Chat";
 
-  return unsub;
-}, [currentUid, selectedClubId, selectedClubName]);
+      if (selectedClubId) {
+        resolvedClubId = selectedClubId;
+        resolvedClubName = selectedClubName || "Club Chat";
+      } else if (userClubIds.length > 0) {
+        resolvedClubId = userClubIds[0];
+        resolvedClubName = userClubNames[0] || "Club Chat";
+      }
+
+      if (!resolvedClubId) {
+        router.replace(`/join-club?uid=${currentUid}`);
+        return;
+      }
+
+      setUserClubId(resolvedClubId);
+      setClubName(resolvedClubName);
+
+      const matchingMembership = clubMemberships.find(
+        (membership: any) => membership?.clubId === resolvedClubId
+      );
+
+      const resolvedPosition =
+        matchingMembership?.position ||
+        data.position ||
+        "";
+
+      setPosition(resolvedPosition);
+    });
+
+    return unsub;
+  }, [currentUid, selectedClubId, selectedClubName]);
 
   useEffect(() => {
     if (!userClubId) return;
@@ -429,6 +449,10 @@ export default function ChatScreen() {
       ...(requestPosition ? { position: requestPosition } : {}),
       clubIds: arrayUnion(userClubId),
       clubNames: arrayUnion(clubName),
+      clubMemberships: arrayUnion({
+        clubId: userClubId,
+        position: requestPosition || "Member"
+      }),
       pendingClubRequests: arrayRemove(userClubId)
     });
   }
@@ -1114,89 +1138,149 @@ export default function ChatScreen() {
   );
 
   return (
-  <KeyboardAvoidingView
-    style={{ flex: 1 }}
-    behavior={Platform.OS === "ios" ? "padding" : "height"}
-    keyboardVerticalOffset={80}
-  >
-    {(() => {
-      const ChatScreenContent = (
-        <View
-          style={[
-            styles.container,
-            chatBackgroundBase64 && { backgroundColor: "transparent" }
-          ]}
-        >
-          <Text style={styles.clubHeader}>{clubName}</Text>
-
-          <Text style={styles.userHeader}>
-            {userName} · {position}
-          </Text>
-
-          <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
-            <Pressable
-              style={styles.openCalendarButton}
-              onPress={() =>
-                router.push({
-                  pathname: "/calendar",
-                  params: { clubId: selectedClubId }
-                })
-              }
-            >
-              <Text style={styles.openCalendarText}>View Calendar</Text>
-            </Pressable>
-
-            {isPresident && (
-              <Pressable
-                style={styles.openCalendarButton}
-                onPress={() => setShowRequestsModal(true)}
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={80}
+    >
+      {(() => {
+        const ChatScreenContent = (
+          <View
+            style={[
+              styles.container,
+              chatBackgroundBase64 && { backgroundColor: "transparent" }
+            ]}
+          >
+            {/* <View style={styles.headerTopRow}>
+              <Pressable onPress={() =>
+                  router.push({
+                    pathname: "/calendar",
+                    params: { clubId: selectedClubId }
+                  })
+                }
               >
-                <Text style={styles.openCalendarText}>Join Requests</Text>
+                <Image
+                  source={require("../assets/images/calendarGraphic.png")}
+                  style={styles.clubHeaderImage}
+                  resizeMode="contain"
+                />
               </Pressable>
-            )}
-          </View>
 
-          {isPresident && (
-            <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
-              <Pressable
-                style={styles.openCalendarButton}
-                onPress={pickChatBackground}
-                disabled={isPickingBackground}
-              >
-                <Text style={styles.openCalendarText}>
-                  {isPickingBackground ? "..." : "Chat Background"}
+              <View style={styles.headerCenterWrap}>
+                <Text style={styles.clubHeader}>{clubName}</Text>
+
+                <Text style={styles.userHeader}>
+                  {userName} · {position}
                 </Text>
+              </View>
+
+              <View style={styles.headerRightSpacer} />
+            </View> */}
+
+            <View style={styles.headerTopRow}>
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: "/calendar",
+                    params: { clubId: selectedClubId }
+                  })
+                }
+              >
+                <Image
+                  source={require("../assets/images/calendarGraphic.png")}
+                  style={styles.clubHeaderImage}
+                  resizeMode="contain"
+                />
               </Pressable>
 
-              {!!chatBackgroundBase64 && (
+              <View style={styles.headerCenterWrap}>
+                <Text style={styles.clubHeader}>{clubName}</Text>
+
+                <Text style={styles.userHeader}>
+                  {userName} · {position}
+                </Text>
+              </View>
+
+              {isPresident ? (
                 <Pressable
-                  style={styles.openCalendarButton}
-                  onPress={clearChatBackground}
+                  onPress={() => setShowRequestsModal(true)}
+                  style={{ padding: 4 }}
                 >
-                  <Text style={styles.openCalendarText}>Remove Background</Text>
+                  <Image
+                    source={require("../assets/images/usersGraphic.png")}
+                    style={styles.clubHeaderImage}
+                    resizeMode="contain"
+                  />
                 </Pressable>
+              ) : (
+                <View style={styles.headerRightSpacer} />
               )}
             </View>
-          )}
 
-          <View style={styles.chatArea}>{ChatBody}</View>
-        </View>
-      );
+            <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
+              {/* <Pressable
+                style={styles.openCalendarButton}
+                onPress={() =>
+                  router.push({
+                    pathname: "/calendar",
+                    params: { clubId: selectedClubId }
+                  })
+                }
+              >
+                <Text style={styles.openCalendarText}>View Calendar</Text>
+              </Pressable> */}
 
-      return chatBackgroundBase64 ? (
-        <ImageBackground
-          source={{ uri: `data:image/jpeg;base64,${chatBackgroundBase64}` }}
-          style={{ flex: 1 }}
-          resizeMode="cover"
-        >
-          <View style={styles.screenOverlay}>{ChatScreenContent}</View>
-        </ImageBackground>
-      ) : (
-        ChatScreenContent
-      );
-    })()}
-  </KeyboardAvoidingView>
-);
+              {/* {isPresident && (
+                <Pressable
+                  style={styles.openCalendarButton}
+                  onPress={() => setShowRequestsModal(true)}
+                >
+                  <Text style={styles.openCalendarText}>Join Requests</Text>
+                </Pressable>
+              )} */}
+            </View>
+
+            {isPresident && (
+              <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
+                <Pressable
+                  style={styles.openCalendarButton}
+                  onPress={pickChatBackground}
+                  disabled={isPickingBackground}
+                >
+                  <Text style={styles.openCalendarText}>
+                    {isPickingBackground ? "..." : "Chat Background"}
+                  </Text>
+                </Pressable>
+
+                {!!chatBackgroundBase64 && (
+                  <Pressable
+                    style={styles.openCalendarButton}
+                    onPress={clearChatBackground}
+                  >
+                    <Text style={styles.openCalendarText}>Remove Background</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
+
+            <View style={styles.chatArea}>{ChatBody}</View>
+          </View>
+        );
+
+        return chatBackgroundBase64 ? (
+          <ImageBackground
+            source={{ uri: `data:image/jpeg;base64,${chatBackgroundBase64}` }}
+            style={{ flex: 1 }}
+            resizeMode="cover"
+          >
+            <View style={styles.screenOverlay}>{ChatScreenContent}</View>
+          </ImageBackground>
+        ) : (
+          ChatScreenContent
+        );
+      })()}
+    </KeyboardAvoidingView>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -1344,7 +1428,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 12,
     alignSelf: "center",
-    marginTop: 16
+    marginTop: 10
   },
   openCalendarText: {
     color: "white",
@@ -1445,7 +1529,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#E5E7EB"
+    backgroundColor: "#E5E5E5"
   },
   mediaButtonText: {
     fontSize: 22,
@@ -1506,5 +1590,27 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#25D366",
     backgroundColor: "#DCFCE7"
-  }
+  },
+  headerTopRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  marginBottom: 8
+  },
+  clubHeaderImage: {
+    width: 48,
+    height: 48,
+    marginRight: 5,
+    marginLeft: 5
+  },
+  headerTextWrap: {
+    alignItems: "flex-start"
+  },
+  headerCenterWrap: {
+    flex: 1,
+    alignItems: "center"
+  },
+  headerRightSpacer: {
+    width: 52
+  },
 });
