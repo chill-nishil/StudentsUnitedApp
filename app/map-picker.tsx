@@ -427,11 +427,11 @@ export default function MapPickerScreen() {
         )} */}
       </MapView>
 
-      {markerCoords && (
+      {/* {markerCoords && (
         <Text style={styles.coords}>
           {markerCoords.latitude.toFixed(5)}, {markerCoords.longitude.toFixed(5)}
         </Text>
-      )}
+      )} */}
 
       <View style={styles.buttonRow}>
         <Pressable style={styles.cancelButton} onPress={() => router.back()}>

@@ -177,6 +177,14 @@ export default function CalendarScreen() {
     });
   }, [calendarMonth]);
 
+  const canAddEvent = useMemo(() => {
+    const normalizedPosition = currentUserPosition.trim().toLowerCase();
+    return (
+      normalizedPosition === "president" ||
+      normalizedPosition === "board member"
+    );
+  }, [currentUserPosition]);
+
   const getSafeLocationText = (location: any) => {
     if (!location) return "";
 
@@ -342,19 +350,21 @@ export default function CalendarScreen() {
           {selectedDate ? "Events on " + selectedDate : "All Events"}
         </Text>
 
-        <Pressable
-          style={styles.addButton}
-          onPress={() =>
-            router.push({
-              pathname: "/add-event",
-              params: {
-                clubId: selectedClubId
-              }
-            })
-          }
-        >
-          <Text style={styles.addButtonText}>Add Event</Text>
-        </Pressable>
+        {canAddEvent && (
+          <Pressable
+            style={styles.addButton}
+            onPress={() =>
+              router.push({
+                pathname: "/add-event",
+                params: {
+                  clubId: selectedClubId
+                }
+              })
+            }
+          >
+            <Text style={styles.addButtonText}>Add Event</Text>
+          </Pressable>
+        )}
       </View>
 
       <FlatList

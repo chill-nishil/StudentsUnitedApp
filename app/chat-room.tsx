@@ -1094,11 +1094,13 @@ export default function ChatScreen() {
                                   style={styles.addReactionButton}
                                   onPress={() => handleReaction(item.id, emoji)}
                                 >
-                                  <Image
+                                  {/* <Image
                                     source={require("../assets/images/imageGraphic.jpg")}
                                     style={styles.mediaIcon}
                                     resizeMode="contain"
-                                  />
+                                  /> */}
+
+                                  <Text style={styles.addReactionText}>+</Text>
                                 </Pressable>
                               )}
                             </View>
