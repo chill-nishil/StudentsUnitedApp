@@ -433,22 +433,52 @@ export default function ChatScreen() {
               return {
                 uid: userData.uid,
                 name: userData.name || "Unknown User",
-                position: userData.position || ""
+                position: userData.position || "",
+                email: userData.email || "No email"
               };
             })
           )
         );
+      }
+
+      const requestUids = requests
+        .map((request: any) => request?.uid)
+        .filter(Boolean);
+
+      if (requestUids.length === 0) {
+        setRequestUsers([]);
         return;
       }
 
+      const requestChunks = chunkArray(requestUids, 10);
+      const requestSnaps = await Promise.all(
+        requestChunks.map(chunk =>
+          getDocs(query(collection(db, "users"), where("uid", "in", chunk)))
+        )
+      );
+
+      const usersByUid: Record<string, any> = {};
+
+      requestSnaps.forEach(requestSnap => {
+        requestSnap.docs.forEach(d => {
+          const userData = d.data();
+          usersByUid[userData.uid] = userData;
+        });
+      });
+
       setRequestUsers(
-        requests.map((request: any) => ({
-          uid: request.uid,
-          name: request.name || "Unknown User",
-          position: request.position || "",
-          requestedAt: request.requestedAt || null,
-          rawRequest: request
-        }))
+        requests.map((request: any) => {
+          const matchedUser = usersByUid[request.uid] || {};
+
+          return {
+            uid: request.uid,
+            name: matchedUser.name || request.name || "Unknown User",
+            position: request.position || matchedUser.position || "",
+            email: matchedUser.email || "No email",
+            requestedAt: request.requestedAt || null,
+            rawRequest: request
+          };
+        })
       );
     });
 
@@ -882,6 +912,51 @@ export default function ChatScreen() {
     }
   };
 
+  async function removeMember(member: ClubMember) {
+  if (!userClubId) return;
+
+  const clubRef = doc(db, "clubs", userClubId);
+  const userRef = doc(db, "users", member.uid);
+
+  try {
+    await updateDoc(clubRef, {
+      members: arrayRemove(member.uid)
+    });
+
+    await updateDoc(userRef, {
+      clubIds: arrayRemove(userClubId),
+      clubNames: arrayRemove(clubName),
+      clubMemberships: arrayRemove({
+        clubId: userClubId,
+        position: member.position
+      })
+    });
+  } catch (e: any) {
+    console.log("REMOVE_MEMBER_ERROR", e?.code, e?.message);
+  }
+}
+
+function handleMemberLongPress(member: ClubMember) {
+  if (member.position.toLowerCase() === "president") return;
+  if (!isPresident) return;
+
+  const isSelf = member.uid === currentUid;
+  if (isSelf) return; // prevent removing yourself
+
+  Alert.alert(
+    "Remove member?",
+    `${member.name} will be removed from the club.`,
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: () => removeMember(member)
+      }
+    ]
+  );
+}
+
   const ChatBody = (
     <View style={{ flex: 1 }}>
       {!!pinnedMessageId && (
@@ -1129,7 +1204,10 @@ export default function ChatScreen() {
                 renderItem={({ item }) => {
                   const isMemberPresident = item.position?.trim().toLowerCase() === "president";
                   return (
-                    <View style={styles.memberRow}>
+                    <Pressable
+                      style={styles.memberRow}
+                      onLongPress={() => handleMemberLongPress(item)}
+                    >
                       <View style={styles.memberAvatar}>
                         <Text style={styles.memberAvatarText}>
                           {(item.name || "?").charAt(0).toUpperCase()}
@@ -1142,7 +1220,7 @@ export default function ChatScreen() {
                           {item.position}
                         </Text>
                       </View>
-                    </View>
+                    </Pressable>
                   );
                 }}
               />
@@ -1172,7 +1250,7 @@ export default function ChatScreen() {
           <View style={styles.requestsModalCard}>
             <Text style={{ fontSize: 18, fontWeight: "700", marginBottom: 12 }}>Join Requests</Text>
 
-            {requestUsers.length === 0 && <Text>No pending join requests</Text>}
+            {requestUsers.length === 0 && <Text>No pending invites</Text>}
 
             <FlatList
               data={requestUsers}
@@ -1182,6 +1260,9 @@ export default function ChatScreen() {
                   <Text style={{ fontWeight: "600" }}>{item.name}</Text>
                   <Text style={{ color: "#6B7280", marginTop: 2 }}>
                     {item.position ? item.position : "No position provided"}
+                  </Text>
+                  <Text style={{ color: "#6B7280", marginTop: 2 }}>
+                    {item.email}
                   </Text>
 
                   <View style={{ flexDirection: "row", marginTop: 6 }}>
@@ -1322,11 +1403,15 @@ export default function ChatScreen() {
               </Pressable>
 
               <View style={styles.headerCenterWrap}>
-                <Text style={styles.clubHeader}>{clubName}</Text>
+                <View style={styles.headerCenterWrap}>
+                  <View style={styles.headerBox}>
+                    <Text style={styles.clubHeader}>{clubName}</Text>
 
-                <Text style={styles.userHeader}>
-                  {userName} · {position}
-                </Text>
+                    <Text style={styles.userHeader}>
+                      {userName} · {position}
+                    </Text>
+                  </View>
+                </View>
               </View>
 
               <Pressable
@@ -1391,15 +1476,15 @@ const styles = StyleSheet.create({
     backgroundColor: "white"
   },
   clubHeader: {
-    textAlign: "center",
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 4
+  textAlign: "center",
+  fontSize: 20,
+  fontWeight: "700",
+  marginBottom: 0
   },
   userHeader: {
     textAlign: "center",
-    fontSize: 14,
-    marginBottom: 8,
+    fontSize: 13,
+    marginBottom: 0,
     color: "#000000"
   },
   chatArea: {
@@ -1834,5 +1919,12 @@ imageModalCloseText: {
   fontSize: 22,
   fontWeight: "700",
   lineHeight: 22
+},
+headerBox: {
+  backgroundColor: "rgba(255,255,255,0.8)",
+  paddingHorizontal: 10,
+  paddingVertical: 3,
+  borderRadius: 10,
+  alignItems: "center"
 },
 });

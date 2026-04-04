@@ -17,71 +17,94 @@ import {
 } from "react-native";
 
 export default function SignInScreen() {
+  // State variables for user input and UI behavior
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  // Handles signing the user into Firebase
   const handleSignIn = async () => {
+    // Make sure both fields are filled in before trying to sign in
     if (!email || !password) {
       alert("Enter email and password");
       return;
     }
 
     try {
+      // Show loading state while signing in
       setLoading(true);
 
+      // Sign the user in with Firebase Authentication
       const cred = await signInWithEmailAndPassword(auth, email, password);
 
+      // Create a Firestore query to find the user's profile document
       const q = query(
         collection(db, "users"),
         where("uid", "==", cred.user.uid)
       );
 
+      // Run the query and get matching documents
       const snap = await getDocs(q);
 
+      // If no matching user profile exists, stop and show an error
       if (snap.empty) {
         alert("User profile not found");
         setLoading(false);
         return;
       }
 
+      // If sign in and profile lookup succeed, go to the chat dashboard
       router.push("/chat-dashboard");
     } catch (e) {
+      // If sign in fails, show an error message
       alert("Invalid email or password");
     } finally {
+      // Stop loading whether sign in worked or failed
       setLoading(false);
     }
   };
 
+  // Handles sending a password reset email
   const handleForgotPassword = async () => {
+    // Remove extra spaces from the email input
     const trimmedEmail = email.trim();
 
+    // Make sure the user typed an email first
     if (!trimmedEmail) {
       alert("Enter your email first");
       return;
     }
 
     try {
+      // Show loading state while sending the reset email
       setResettingPassword(true);
+
+      // Send password reset email through Firebase
       await sendPasswordResetEmail(auth, trimmedEmail);
       alert("Password reset email sent");
     } catch (e: any) {
+      // If sending fails, show an error message
       alert("Could not send reset email");
     } finally {
+      // Stop the reset loading state
       setResettingPassword(false);
     }
   };
 
   return (
+    // Outer container for the whole screen
     <View style={styles.container}>
+      {/* App logo at the top of the sign in screen */}
       <Image
         source={require("../../assets/images/logo.png")}
         style={styles.logoImage}
       />
 
+      {/* White card that holds all sign in form elements */}
       <View style={styles.card}>
+        {/* Email input field */}
         <TextInput
           placeholder="Email"
           placeholderTextColor="#4B5563"
@@ -92,6 +115,7 @@ export default function SignInScreen() {
           style={styles.input}
         />
 
+        {/* Password input row with show/hide eye icon */}
         <View style={styles.passwordContainer}>
           <TextInput
             placeholder="Password"
@@ -101,6 +125,8 @@ export default function SignInScreen() {
             secureTextEntry={!showPassword}
             style={styles.passwordInput}
           />
+
+          {/* Eye icon button toggles password visibility */}
           <Pressable onPress={() => setShowPassword(!showPassword)}>
             <Ionicons
               name={showPassword ? "eye-off" : "eye"}
@@ -110,6 +136,7 @@ export default function SignInScreen() {
           </Pressable>
         </View>
 
+        {/* Forgot password button */}
         <Pressable
           onPress={handleForgotPassword}
           disabled={resettingPassword}
@@ -120,6 +147,7 @@ export default function SignInScreen() {
           </Text>
         </Pressable>
 
+        {/* Sign in button */}
         <Pressable
           style={[styles.button, loading && styles.disabled]}
           onPress={handleSignIn}
@@ -130,6 +158,7 @@ export default function SignInScreen() {
           </Text>
         </Pressable>
 
+        {/* Link to create account screen for new users */}
         <Pressable onPress={() => router.push("/create-account")}>
           <Text style={styles.linkText}>New here? Create account!</Text>
         </Pressable>
@@ -139,27 +168,36 @@ export default function SignInScreen() {
 }
 
 const styles = StyleSheet.create({
+  // Main page background and layout
   container: {
     flex: 1,
     backgroundColor: "#dbeafe",
     justifyContent: "center",
     padding: 24
   },
+
+  // Old text logo style, currently unused
   logo: {
     fontSize: 28,
     textAlign: "center",
     fontWeight: "700",
     marginBottom: 4
   },
+
+  // Old subtitle style, currently unused
   subtitle: {
     textAlign: "center",
     marginBottom: 32
   },
+
+  // White card around the form
   card: {
     backgroundColor: "white",
     borderRadius: 12,
     padding: 20
   },
+
+  // Shared style for normal text input fields
   input: {
     borderWidth: 1,
     borderColor: "#ccc",
@@ -167,24 +205,34 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 12
   },
+
+  // Main button style
   button: {
     backgroundColor: "#222",
     padding: 14,
     borderRadius: 8,
     marginTop: 8
   },
+
+  // Makes button look faded when disabled
   disabled: {
     opacity: 0.6
   },
+
+  // Text inside the sign in button
   buttonText: {
     color: "white",
     textAlign: "center",
     fontWeight: "600"
   },
+
+  // Text for the create account link
   linkText: {
     marginTop: 12,
     textAlign: "center"
   },
+
+  // Wrapper around password input and eye icon
   passwordContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -195,21 +243,29 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     backgroundColor: "white"
   },
+
+  // Password text input inside the password row
   passwordInput: {
     flex: 1,
     paddingVertical: 12
   },
+
+  // Container for forgot password text
   forgotWrap: {
     alignSelf: "flex-start",
     marginBottom: 8
   },
+
+  // Forgot password text style
   forgotText: {
     color: "#535353",
     fontSize: 14,
-    textAlign: "left", 
+    textAlign: "left",
     marginLeft: 4,
     marginTop: 4
   },
+
+  // App logo image style
   logoImage: {
     width: 280,
     height: 200,

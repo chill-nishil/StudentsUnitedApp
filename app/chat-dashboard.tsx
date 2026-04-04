@@ -75,6 +75,7 @@ export default function ChatRoomsScreen() {
 
   const [lastReadByClub, setLastReadByClub] = useState<Record<string, any>>({});
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [pinnedClubIds, setPinnedClubIds] = useState<string[]>([]);
 
   const [showCreateClubModal, setShowCreateClubModal] = useState(false);
   const [newClubName, setNewClubName] = useState("");
@@ -141,6 +142,7 @@ export default function ChatRoomsScreen() {
 
       const data = snap.data();
       setLastReadByClub(data.lastReadByClub || {});
+      setPinnedClubIds(Array.isArray(data.pinnedClubIds) ? data.pinnedClubIds : []);
     });
 
     return unsub;
@@ -176,6 +178,9 @@ export default function ChatRoomsScreen() {
       });
 
       list.sort((a, b) => {
+        const aIsPinned = pinnedClubIds.includes(a.id);
+        const bIsPinned = pinnedClubIds.includes(b.id);
+
         const aTime =
           a.lastMessageTime && typeof a.lastMessageTime?.toDate === "function"
             ? a.lastMessageTime.toDate().getTime()
@@ -186,6 +191,9 @@ export default function ChatRoomsScreen() {
             ? b.lastMessageTime.toDate().getTime()
             : 0;
 
+        if (aIsPinned && !bIsPinned) return -1;
+        if (!aIsPinned && bIsPinned) return 1;
+
         return bTime - aTime;
       });
 
@@ -194,7 +202,7 @@ export default function ChatRoomsScreen() {
     });
 
     return unsub;
-  }, [currentUid]);
+  }, [currentUid, pinnedClubIds]);
 
   function openChat(room: ChatRoomItem) {
     router.push({
@@ -268,6 +276,85 @@ export default function ChatRoomsScreen() {
     }
   }
 
+  async function pinRoom(room: ChatRoomItem) {
+    if (!currentUid) return;
+
+    const userRef = doc(db, "users", currentUid);
+    const alreadyPinned = pinnedClubIds.includes(room.id);
+
+    if (alreadyPinned) {
+      return;
+    }
+
+    if (pinnedClubIds.length < 3) {
+      await updateDoc(userRef, {
+        pinnedClubIds: [...pinnedClubIds, room.id]
+      });
+      return;
+    }
+
+    const pinnedRooms = pinnedClubIds
+      .map(id => rooms.find(roomItem => roomItem.id === id))
+      .filter(Boolean) as ChatRoomItem[];
+
+    Alert.alert(
+      "Pinned chats full",
+      "You can only pin 3 chats. Remove one and replace it.",
+      [
+        ...pinnedRooms.map(pinnedRoom => ({
+          text: `Replace ${pinnedRoom.name}`,
+          onPress: async () => {
+            const updatedPinned = pinnedClubIds.filter(id => id !== pinnedRoom.id);
+            updatedPinned.push(room.id);
+
+            await updateDoc(userRef, {
+              pinnedClubIds: updatedPinned
+            });
+          }
+        })),
+        {
+          text: "Cancel",
+          style: "cancel"
+        }
+      ]
+    );
+  }
+
+  async function unpinRoom(room: ChatRoomItem) {
+    if (!currentUid) return;
+
+    const userRef = doc(db, "users", currentUid);
+    const updatedPinned = pinnedClubIds.filter(id => id !== room.id);
+
+    await updateDoc(userRef, {
+      pinnedClubIds: updatedPinned
+    });
+  }
+
+  function handleRoomLongPress(room: ChatRoomItem) {
+    const isPinned = pinnedClubIds.includes(room.id);
+
+    Alert.alert(
+      room.name,
+      isPinned ? "This chat is pinned." : "Pin this chat to keep it at the top.",
+      [
+        isPinned
+          ? {
+              text: "Unpin",
+              onPress: () => unpinRoom(room)
+            }
+          : {
+              text: "Pin",
+              onPress: () => pinRoom(room)
+            },
+        {
+          text: "Cancel",
+          style: "cancel"
+        }
+      ]
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -289,9 +376,14 @@ export default function ChatRoomsScreen() {
             renderItem={({ item }) => {
               const unreadCount = unreadCounts[item.id] || 0;
               const unread = unreadCount > 0;
+              const isPinned = pinnedClubIds.includes(item.id);
 
               return (
-                <Pressable style={styles.chatRow} onPress={() => openChat(item)}>
+                <Pressable
+                  style={styles.chatRow}
+                  onPress={() => openChat(item)}
+                  onLongPress={() => handleRoomLongPress(item)}
+                >
                   <View style={styles.avatar}>
                     <Text style={styles.avatarText}>
                       {item.name.charAt(0).toUpperCase()}
@@ -299,9 +391,17 @@ export default function ChatRoomsScreen() {
                   </View>
 
                   <View style={styles.textWrap}>
-                    <Text numberOfLines={1} style={styles.chatName}>
-                      {item.name}
-                    </Text>
+                    <View style={styles.nameRow}>
+                      <View style={styles.nameRow}>
+                        <Text numberOfLines={1} style={styles.chatName}>
+                          {item.name}
+                        </Text>
+
+                        {pinnedClubIds.includes(item.id) && (
+                          <Text style={styles.pinIcon}>📌</Text>
+                        )}
+                      </View>
+                    </View>
 
                     <Text numberOfLines={1} style={styles.previewText}>
                       {renderPreview(item)}
@@ -455,10 +555,27 @@ const styles = StyleSheet.create({
   textWrap: {
     flex: 1
   },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center"
+  },
   chatName: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#111827"
+    color: "#111827",
+    flexShrink: 1
+  },
+  pinnedTag: {
+    marginLeft: 8,
+    backgroundColor: "#FFF3CD",
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2
+  },
+  pinnedTagText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#8A6D3B"
   },
   previewText: {
     fontSize: 14,
@@ -612,5 +729,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 14,
     color: "#6B7280"
+  },
+  pinIcon: {
+    marginLeft: 6,
+    fontSize: 14
   }
 });
