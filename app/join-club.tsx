@@ -107,7 +107,12 @@ export default function JoinClubScreen() {
       const clubName =
         typeof club.name === "string" ? club.name.toUpperCase() : "";
 
-      return words.every(word => clubName.includes(word));
+      const clubCode =
+        typeof club.clubCode === "string" ? club.clubCode.toUpperCase() : "";
+
+      return words.every(
+        word => clubName.includes(word) || clubCode.includes(word)
+      );
     });
 
     setClubResults(results);
@@ -207,8 +212,10 @@ export default function JoinClubScreen() {
 
         return (
           <View key={clubResult.id} style={styles.result}>
-            <Text style={styles.clubName}>{clubResult.name}</Text>
-
+            <View>
+              <Text style={styles.clubName}>{clubResult.name}</Text>
+              <Text style={styles.clubCode}>Code: {clubResult.clubCode || "No Code"}</Text>
+            </View>
             {currentClubAlreadyJoined ? (
               <Text style={styles.pendingText}>
                 You are already in this club.
@@ -386,5 +393,11 @@ const styles = StyleSheet.create({
   },
   positionHeader: {
     marginBottom: 10
-  }
+  },
+  clubCode: {
+  fontSize: 13,
+  color: "#6B7280",
+  marginTop: -4,
+  marginBottom: 8
+}
 });
