@@ -56,7 +56,7 @@ export default function SignInScreen() {
       }
 
       // If sign in and profile lookup succeed, go to the chat dashboard
-      router.push("/chat-dashboard");
+      router.push("/general-dashboard");
     } catch (e) {
       // If sign in fails, show an error message
       alert("Invalid email or password");

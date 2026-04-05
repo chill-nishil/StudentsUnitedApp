@@ -1,3 +1,4 @@
+import BottomNav from "@/components/BottomNav";
 import { db } from "@/FirebaseConfig";
 import { router } from "expo-router";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
@@ -419,15 +420,13 @@ export default function ChatRoomsScreen() {
 
                   <View style={styles.textWrap}>
                     <View style={styles.nameRow}>
-                      <View style={styles.nameRow}>
-                        <Text numberOfLines={1} style={styles.chatName}>
-                          {item.name}
-                        </Text>
+                      <Text numberOfLines={1} style={styles.chatName}>
+                        {item.name}
+                      </Text>
 
-                        {pinnedClubIds.includes(item.id) && (
-                          <Text style={styles.pinIcon}>📌</Text>
-                        )}
-                      </View>
+                      {pinnedClubIds.includes(item.id) && (
+                        <Text style={styles.pinIcon}>📌</Text>
+                      )}
                     </View>
 
                     <Text numberOfLines={1} style={styles.previewText}>
@@ -528,15 +527,17 @@ export default function ChatRoomsScreen() {
           </View>
         </View>
       </Modal>
+      <BottomNav/>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: "white"
-  },
+  flex: 1,
+  backgroundColor: "white",
+  paddingBottom: 95
+},
   header: {
     backgroundColor: "#7b97d4",
     paddingTop: 30,
@@ -638,11 +639,11 @@ const styles = StyleSheet.create({
     minWidth: 62
   },
   floatingButtonsWrap: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 50
-  },
+  position: "absolute",
+  left: 16,
+  right: 16,
+  bottom: 95
+},
   floatingCreateButton: {
     backgroundColor: "white",
     paddingVertical: 14,
@@ -760,5 +761,28 @@ const styles = StyleSheet.create({
   pinIcon: {
     marginLeft: 6,
     fontSize: 14
-  }
+  },
+  floatingGeneralCalendarButton: {
+  backgroundColor: "#dbeafe",
+  paddingVertical: 14,
+  borderRadius: 12,
+  alignItems: "center",
+  justifyContent: "center",
+  marginBottom: 10,
+  borderWidth: 1,
+  borderColor: "#7b97d4",
+  elevation: 6,
+  shadowColor: "#000",
+  shadowOffset: {
+    width: 0,
+    height: 3
+  },
+  shadowOpacity: 0.15,
+  shadowRadius: 6
+},
+floatingGeneralCalendarButtonText: {
+  color: "#224bc5",
+  fontSize: 16,
+  fontWeight: "600"
+},
 });

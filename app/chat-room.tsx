@@ -1402,17 +1402,23 @@ function handleMemberLongPress(member: ClubMember) {
                 />
               </Pressable>
 
-              <View style={styles.headerCenterWrap}>
-                <View style={styles.headerCenterWrap}>
-                  <View style={styles.headerBox}>
-                    <Text style={styles.clubHeader}>{clubName}</Text>
+              <Pressable
+                style={styles.headerCenterWrap}
+                onPress={() =>
+                  router.push({
+                    pathname: "/club-info",
+                    params: { clubId: userClubId }
+                  })
+                }
+              >
+                <View style={styles.headerBox}>
+                  <Text style={styles.clubHeader}>{clubName}</Text>
 
-                    <Text style={styles.userHeader}>
-                      {userName} · {position}
-                    </Text>
-                  </View>
+                  <Text style={styles.userHeader}>
+                    {userName} · {position}
+                  </Text>
                 </View>
-              </View>
+              </Pressable>
 
               <Pressable
                 onPress={() => setShowMembersModal(true)}
