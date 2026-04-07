@@ -1390,14 +1390,14 @@ function handleMemberLongPress(member: ClubMember) {
               <Pressable
                 onPress={() =>
                   router.push({
-                    pathname: "/calendar",
+                    pathname: "/club-info",
                     params: { clubId: selectedClubId }
                   })
                 }
               >
                 <Image
-                  source={require("../assets/images/calendarGraphic.png")}
-                  style={styles.clubHeaderImage}
+                  source={require("../assets/images/settingsGraphic.png")}
+                  style={styles.settingsImage}
                   resizeMode="contain"
                 />
               </Pressable>
@@ -1793,6 +1793,11 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     marginRight: 5,
+    marginLeft: 5
+  },
+  settingsImage: {
+    width: 52,
+    height: 52,
     marginLeft: 5
   },
   headerTextWrap: {

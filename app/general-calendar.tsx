@@ -1,27 +1,28 @@
 import { db } from "@/FirebaseConfig";
 import BottomNav from "@/components/BottomNav";
+import { router } from "expo-router";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import {
-    arrayRemove,
-    arrayUnion,
-    collection,
-    doc,
-    getDoc,
-    onSnapshot,
-    orderBy,
-    query,
-    updateDoc
+  arrayRemove,
+  arrayUnion,
+  collection,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  updateDoc
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import {
-    Alert,
-    FlatList,
-    Linking,
-    Modal,
-    Pressable,
-    StyleSheet,
-    Text,
-    View
+  Alert,
+  FlatList,
+  Linking,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View
 } from "react-native";
 import { Calendar } from "react-native-calendars";
 
@@ -55,9 +56,13 @@ export default function GeneralCalendarScreen() {
   const [currentUserPosition, setCurrentUserPosition] = useState("");
   const [userClubIds, setUserClubIds] = useState<string[]>([]);
   const [clubNamesById, setClubNamesById] = useState<Record<string, string>>({});
+  const [clubMemberships, setClubMemberships] = useState<any[]>([]);
 
   const [attendanceModalVisible, setAttendanceModalVisible] = useState(false);
   const [attendanceEvent, setAttendanceEvent] = useState<Event | null>(null);
+
+  const [selectedClubFilter, setSelectedClubFilter] = useState("all");
+  const [clubDropdownOpen, setClubDropdownOpen] = useState(false);
 
   useEffect(() => {
     const auth = getAuth();
@@ -69,7 +74,9 @@ export default function GeneralCalendarScreen() {
         setCurrentUserPosition("");
         setUserClubIds([]);
         setClubNamesById({});
+        setClubMemberships([]);
         setEvents([]);
+        setSelectedClubFilter("all");
         return;
       }
 
@@ -91,6 +98,10 @@ export default function GeneralCalendarScreen() {
       setCurrentUserName(userData.name ?? "");
       setCurrentUserPosition(userData.position ?? "");
       setUserClubIds(clubIds);
+      setClubMemberships(
+        Array.isArray(userData.clubMemberships) ? userData.clubMemberships : []
+      );
+      setSelectedClubFilter("all");
     });
 
     return () => {
@@ -166,12 +177,36 @@ export default function GeneralCalendarScreen() {
     };
   }, [userClubIds, attendanceEvent]);
 
-  const monthTitle = useMemo(() => {
-    return calendarMonth.toLocaleDateString([], {
-      month: "long",
-      year: "numeric"
-    });
-  }, [calendarMonth]);
+  // const monthTitle = useMemo(() => {
+  //   return calendarMonth.toLocaleDateString([], {
+  //     month: "long",
+  //     year: "numeric"
+  //   });
+  // }, [calendarMonth]);
+
+  const userClubOptions = useMemo(() => {
+    return userClubIds.map(clubId => ({
+      id: clubId,
+      name: clubNamesById[clubId] || "Unknown Club"
+    }));
+  }, [userClubIds, clubNamesById]);
+
+  const selectedClubName =
+    selectedClubFilter === "all"
+      ? "All Clubs"
+      : clubNamesById[selectedClubFilter] || "Club";
+
+  const canAddEventsForSelectedClub = useMemo(() => {
+    if (selectedClubFilter === "all") return false;
+
+    const membership = clubMemberships.find(
+      membershipItem => membershipItem?.clubId === selectedClubFilter
+    );
+
+    const role = String(membership?.position || "").trim().toLowerCase();
+
+    return role === "president" || role === "board member";
+  }, [clubMemberships, selectedClubFilter]);
 
   const getSafeLocationText = (location: any) => {
     if (!location) return "";
@@ -289,25 +324,44 @@ export default function GeneralCalendarScreen() {
     setAttendanceModalVisible(true);
   };
 
-  const markedDates: any = {};
+  const clubFilteredEvents =
+  selectedClubFilter === "all"
+    ? events
+    : events.filter(event => event.clubId === selectedClubFilter);
 
-  events.forEach(event => {
-    const dateStr = event.date?.toDate?.().toISOString().split("T")[0];
+const today = new Date();
+today.setHours(0, 0, 0, 0);
 
-    if (!dateStr) return;
+const upcomingClubFilteredEvents = clubFilteredEvents.filter(event => {
+  const eventDate = event.date?.toDate?.();
 
-    markedDates[dateStr] = {
-      marked: true,
-      dotColor: "#2563EB"
-    };
-  });
+  if (!eventDate) return false;
 
-  const filteredEvents = selectedDate
-    ? events.filter(event => {
-        const dateStr = event.date?.toDate?.().toISOString().split("T")[0];
-        return dateStr === selectedDate;
-      })
-    : events;
+  const normalizedEventDate = new Date(eventDate);
+  normalizedEventDate.setHours(0, 0, 0, 0);
+
+  return normalizedEventDate.getTime() >= today.getTime();
+});
+
+const markedDates: any = {};
+
+upcomingClubFilteredEvents.forEach(event => {
+  const dateStr = event.date?.toDate?.().toISOString().split("T")[0];
+
+  if (!dateStr) return;
+
+  markedDates[dateStr] = {
+    marked: true,
+    dotColor: "#2563EB"
+  };
+});
+
+const filteredEvents = selectedDate
+  ? upcomingClubFilteredEvents.filter(event => {
+      const dateStr = event.date?.toDate?.().toISOString().split("T")[0];
+      return dateStr === selectedDate;
+    })
+  : upcomingClubFilteredEvents;
 
   if (selectedDate) {
     markedDates[selectedDate] = {
@@ -319,10 +373,10 @@ export default function GeneralCalendarScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>{monthTitle}</Text>
-
+      <Text style={styles.header}>Calendar</Text> 
       <Calendar
         markedDates={markedDates}
+        enableSwipeMonths={true}
         onDayPress={day => {
           setSelectedDate(prev =>
             prev === day.dateString ? "" : day.dateString
@@ -335,8 +389,72 @@ export default function GeneralCalendarScreen() {
 
       <View style={styles.listHeader}>
         <Text style={styles.subHeader}>
-          {selectedDate ? "Events on " + selectedDate : "All Club Events"}
+          {selectedDate
+            ? `Events on ${selectedDate}`
+            : selectedClubFilter === "all"
+            ? "All Club Events"
+            : `${selectedClubName} Events`}
         </Text>
+
+        <View style={styles.rightHeaderControls}>
+          <View style={styles.dropdownWrap}>
+            <Pressable
+              style={styles.dropdownButton}
+              onPress={() => setClubDropdownOpen(prev => !prev)}
+            >
+              <Text style={styles.dropdownButtonText} numberOfLines={1}>
+                {selectedClubName}
+              </Text>
+              <Text style={styles.dropdownArrow}>
+                {clubDropdownOpen ? "▲" : "▼"}
+              </Text>
+            </Pressable>
+
+            {clubDropdownOpen && (
+              <View style={styles.dropdownMenu}>
+                <Pressable
+                  style={styles.dropdownOption}
+                  onPress={() => {
+                    setSelectedClubFilter("all");
+                    setClubDropdownOpen(false);
+                  }}
+                >
+                  <Text style={styles.dropdownOptionText}>All Clubs</Text>
+                </Pressable>
+
+                {userClubOptions.map(club => (
+                  <Pressable
+                    key={club.id}
+                    style={styles.dropdownOption}
+                    onPress={() => {
+                      setSelectedClubFilter(club.id);
+                      setClubDropdownOpen(false);
+                    }}
+                  >
+                    <Text style={styles.dropdownOptionText}>{club.name}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {canAddEventsForSelectedClub && (
+            <Pressable
+              style={styles.addEventButton}
+              onPress={() =>
+                router.push({
+                  pathname: "/add-event",
+                  params: {
+                    clubId: selectedClubFilter,
+                    clubName: selectedClubName
+                  }
+                })
+              }
+            >
+              <Text style={styles.addEventButtonText}>Add Event</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
 
       <FlatList
@@ -443,6 +561,7 @@ export default function GeneralCalendarScreen() {
           </View>
         </View>
       </Modal>
+
       <BottomNav />
     </View>
   );
@@ -454,7 +573,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#dbeafe",
     padding: 18,
     paddingBottom: 95
-    },
+  },
   header: {
     fontSize: 22,
     fontWeight: "700",
@@ -463,14 +582,84 @@ const styles = StyleSheet.create({
   },
   listHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    marginVertical: 12
+    marginVertical: 12,
+    zIndex: 1000
   },
   subHeader: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#111827"
+    color: "#111827",
+    flex: 1,
+    paddingRight: 10,
+    marginTop: 9
+  },
+  rightHeaderControls: {
+    alignItems: "flex-end"
+  },
+  dropdownWrap: {
+    width: 145,
+    position: "relative"
+  },
+  dropdownButton: {
+    minHeight: 42,
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  dropdownButtonText: {
+    flex: 1,
+    color: "#111827",
+    fontSize: 13,
+    fontWeight: "600",
+    marginRight: 8
+  },
+  dropdownArrow: {
+    color: "#6B7280",
+    fontSize: 11
+  },
+  dropdownMenu: {
+    position: "absolute",
+    top: 46,
+    left: 0,
+    right: 0,
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
+    borderRadius: 10,
+    overflow: "hidden",
+    elevation: 5,
+    zIndex: 2000
+  },
+  dropdownOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: "#EFF6FF"
+  },
+  dropdownOptionText: {
+    color: "#111827",
+    fontSize: 13,
+    fontWeight: "500"
+  },
+  addEventButton: {
+    marginTop: 8,
+    backgroundColor: "#7b97d4",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10
+  },
+  addEventButtonText: {
+    color: "white",
+    fontSize: 13,
+    fontWeight: "600"
   },
   eventCard: {
     backgroundColor: "white",
