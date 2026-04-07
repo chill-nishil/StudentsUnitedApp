@@ -36,7 +36,6 @@ export default function GeneralDashboard() {
   const [currentUid, setCurrentUid] = useState("");
   const [userName, setUserName] = useState("");
   const [clubIds, setClubIds] = useState<string[]>([]);
-
   const [clubs, setClubs] = useState<Club[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
 
@@ -48,6 +47,7 @@ export default function GeneralDashboard() {
 
       setCurrentUid(user.uid);
 
+      // Get user document from Firestore
       const userRef = doc(db, "users", user.uid);
       const snap = await getDoc(userRef);
 
@@ -75,6 +75,7 @@ export default function GeneralDashboard() {
         name: d.data().name || "Club"
       }));
 
+      // Save clubs user belongs to
       setClubs(list);
     });
 
@@ -92,6 +93,7 @@ export default function GeneralDashboard() {
           title: d.data().title,
           date: d.data().date
         }))
+        // Only keep events from user's clubs
         .filter(event => clubIds.includes(event.clubId));
 
       setEvents(list);
@@ -100,6 +102,7 @@ export default function GeneralDashboard() {
     return unsub;
   }, [clubIds]);
 
+  // display 3 upcoming events
   const upcomingEvents = useMemo(() => {
     return events
       .filter(e => e.date?.toDate)
@@ -119,7 +122,6 @@ export default function GeneralDashboard() {
 
       <Text style={styles.welcome}>Welcome, {userName}</Text>
 
-      {/* Upcoming Events */}
       <Text style={styles.sectionTitle}>Upcoming Events</Text>
 
       {upcomingEvents.length === 0 ? (
@@ -141,7 +143,7 @@ export default function GeneralDashboard() {
         })
       )}
 
-      {/* Chat Rooms */}
+
       <Text style={styles.sectionTitle}>My Chat Rooms</Text>
 
       <FlatList
@@ -177,7 +179,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#dbeafe",
     padding: 18,
     paddingBottom: 95
-    },
+  },
 
   logoWrap: {
     alignItems: "center",
@@ -236,19 +238,18 @@ const styles = StyleSheet.create({
   },
 
   clubCard: {
-  backgroundColor: "white",
-  paddingVertical: 6,
-  paddingHorizontal: 12,
-  borderRadius: 10,
-  marginRight: 8,
-  minHeight: 0,
-  justifyContent: "center"
-},
+    backgroundColor: "white",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginRight: 8,
+    justifyContent: "center"
+  },
 
-clubName: {
-  fontSize: 11,
-  fontWeight: "600"
-},
+  clubName: {
+    fontSize: 11,
+    fontWeight: "600"
+  },
 
   actionsRow: {
     flexDirection: "row",

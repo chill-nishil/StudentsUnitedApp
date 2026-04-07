@@ -1,13 +1,13 @@
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { useFonts } from "expo-font";
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useFonts } from "expo-font";
-
+// Expo Router setting to define the main entry group (tabs layout)
 export const unstable_settings = {
-  anchor: '(tabs)',
+  anchor: '(tabs)', 
 };
 
 export default function RootLayout() {
@@ -22,10 +22,14 @@ export default function RootLayout() {
   }
 
   return (
+    // Apply theme globally based on light or dark mode
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack screenOptions={{ animation: "none" }}>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+        <Stack.Screen 
+          name="modal" 
+          options={{ presentation: 'modal', title: 'Modal' }} 
+        />      
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

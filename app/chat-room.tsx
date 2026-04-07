@@ -1432,7 +1432,7 @@ function handleMemberLongPress(member: ClubMember) {
               </Pressable>
             </View>
 
-            {isPresident && (
+            {/* {isPresident && (
               <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
                 <Pressable
                   style={styles.openCalendarButton}
@@ -1453,7 +1453,7 @@ function handleMemberLongPress(member: ClubMember) {
                   </Pressable>
                 )}
               </View>
-            )}
+            )} */}
 
             <View style={styles.chatArea}>{ChatBody}</View>
           </View>

@@ -1,9 +1,12 @@
 import { db } from "@/FirebaseConfig";
-import { useLocalSearchParams } from "expo-router";
+import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
+import * as ImagePicker from "expo-image-picker";
+import { router, useLocalSearchParams } from "expo-router";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -39,6 +42,12 @@ export default function ClubInfoScreen() {
   const [customBadgeInput, setCustomBadgeInput] = useState("");
   const [isSavingBadges, setIsSavingBadges] = useState(false);
 
+  const [aboutInput, setAboutInput] = useState("");
+  const [rulesInput, setRulesInput] = useState("");
+  const [isSavingInfo, setIsSavingInfo] = useState(false);
+
+  const [isPickingBackground, setIsPickingBackground] = useState(false);
+
   useEffect(() => {
     const auth = getAuth();
 
@@ -64,6 +73,8 @@ export default function ClubInfoScreen() {
 
       setClub(clubData);
       setSelectedBadges(nextBadges);
+      setAboutInput(typeof clubData.about === "string" ? clubData.about : "");
+      setRulesInput(typeof clubData.rules === "string" ? clubData.rules : "");
       setIsPresident(!!currentUid && clubData.presidentId === currentUid);
     });
 
@@ -87,8 +98,8 @@ export default function ClubInfoScreen() {
     if (!isPresident) return;
 
     setSelectedBadges(prev => {
-      if (prev.includes(badge)) {
-        return prev.filter(item => item !== badge);
+      if (prev.some(item => item.toLowerCase() === badge.toLowerCase())) {
+        return prev.filter(item => item.toLowerCase() !== badge.toLowerCase());
       }
       return [...prev, badge];
     });
@@ -112,7 +123,12 @@ export default function ClubInfoScreen() {
   }
 
   async function saveBadges() {
-    if (!clubId || !isPresident) return;
+    if (!clubId || !isPresident) {
+      if (!isPresident) {
+        Alert.alert("Only the president can edit club focus.");
+      }
+      return;
+    }
 
     try {
       setIsSavingBadges(true);
@@ -126,6 +142,92 @@ export default function ClubInfoScreen() {
     }
   }
 
+  async function saveClubInfo() {
+    if (!clubId || !isPresident) {
+      if (!isPresident) {
+        Alert.alert("Only the president can edit club info.");
+      }
+      return;
+    }
+
+    try {
+      setIsSavingInfo(true);
+
+      const clubRef = doc(db, "clubs", clubId);
+      await updateDoc(clubRef, {
+        about: aboutInput.trim(),
+        rules: rulesInput.trim()
+      });
+    } finally {
+      setIsSavingInfo(false);
+    }
+  }
+
+  async function pickChatBackground() {
+    if (!isPresident) return;
+    if (!clubId) return;
+    if (isPickingBackground) return;
+
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== "granted") return;
+
+    setIsPickingBackground(true);
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        aspect: [9, 16],
+        quality: 0.3
+      });
+
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) return;
+
+      const manipulated = await manipulateAsync(
+        asset.uri,
+        [{ resize: { width: 1200 } }],
+        { compress: 0.35, format: SaveFormat.JPEG, base64: true }
+      );
+
+      const base64 = manipulated.base64 || null;
+      if (!base64) return;
+
+      if (base64.length > 1100000) {
+        console.log("BG_TOO_LARGE", base64.length);
+        return;
+      }
+
+      const clubRef = doc(db, "clubs", clubId);
+      await updateDoc(clubRef, { chatBackgroundBase64: base64 });
+    } finally {
+      setIsPickingBackground(false);
+    }
+  }
+
+  async function clearChatBackground() {
+    if (!isPresident) return;
+    if (!clubId) return;
+
+    Alert.alert("Remove background?", "This will reset the chat background for everyone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const clubRef = doc(db, "clubs", clubId);
+            await updateDoc(clubRef, { chatBackgroundBase64: null });
+          } catch (e: any) {
+            console.log("CLEAR_BG_ERROR", e?.code, e?.message, e);
+          }
+        }
+      }
+    ]);
+  }
+
   if (!club) {
     return (
       <View style={styles.loadingWrap}>
@@ -136,6 +238,37 @@ export default function ClubInfoScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={styles.headerTopRow}>
+        <View style={styles.headerSide}>
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: "/calendar",
+                params: {
+                  clubId: clubId || "",
+                  clubName: club.name || ""
+                }
+              })
+            }
+          >
+            <Image
+              source={require("../assets/images/calendarGraphic.png")}
+              style={styles.headerIcon}
+              resizeMode="contain"
+            />
+          </Pressable>
+        </View>
+
+        <View style={styles.headerCenterWrap}>
+          <Text style={styles.clubName}>{club.name}</Text>
+          {!!club.clubCode && (
+            <Text style={styles.clubCode}>Code: {club.clubCode}</Text>
+          )}
+        </View>
+
+        <View style={styles.headerSide} />
+      </View>
+
       {!!club.imageBase64 && (
         <Image
           source={{ uri: `data:image/jpeg;base64,${club.imageBase64}` }}
@@ -143,24 +276,77 @@ export default function ClubInfoScreen() {
         />
       )}
 
-      <Text style={styles.clubName}>{club.name}</Text>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>About</Text>
+        {isPresident ? (
+          <TextInput
+            value={aboutInput}
+            onChangeText={setAboutInput}
+            placeholder="Write about your club"
+            placeholderTextColor="#6B7280"
+            style={[styles.customBadgeInput, styles.multilineInput]}
+            multiline
+            textAlignVertical="top"
+          />
+        ) : (
+          <Text style={styles.sectionText}>
+            {club.about || "No description yet."}
+          </Text>
+        )}
+      </View>
 
-      {!!club.clubCode && (
-        <Text style={styles.clubCode}>Code: {club.clubCode}</Text>
+      {isPresident && (
+        <View style={styles.backgroundButtonsRow}>
+          <Pressable
+            style={styles.openCalendarButton}
+            onPress={pickChatBackground}
+            disabled={isPickingBackground}
+          >
+            <Text style={styles.openCalendarText}>
+              {isPickingBackground ? "..." : "Chat Background"}
+            </Text>
+          </Pressable>
+
+          {!!club.chatBackgroundBase64 && (
+            <Pressable
+              style={styles.openCalendarButton}
+              onPress={clearChatBackground}
+            >
+              <Text style={styles.openCalendarText}>Remove Background</Text>
+            </Pressable>
+          )}
+        </View>
       )}
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About</Text>
-        <Text style={styles.sectionText}>
-          {club.about || "No description yet."}
-        </Text>
-      </View>
-
-      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Rules</Text>
-        <Text style={styles.sectionText}>
-          {club.rules || "No rules added."}
-        </Text>
+        {isPresident ? (
+          <TextInput
+            value={rulesInput}
+            onChangeText={setRulesInput}
+            placeholder="Write club rules"
+            placeholderTextColor="#6B7280"
+            style={[styles.customBadgeInput, styles.multilineInput]}
+            multiline
+            textAlignVertical="top"
+          />
+        ) : (
+          <Text style={styles.sectionText}>
+            {club.rules || "No rules added."}
+          </Text>
+        )}
+
+        {isPresident && (
+          <Pressable
+            style={styles.saveButton}
+            onPress={saveClubInfo}
+            disabled={isSavingInfo}
+          >
+            <Text style={styles.saveButtonText}>
+              {isSavingInfo ? "Saving..." : "Save Info"}
+            </Text>
+          </Pressable>
+        )}
       </View>
 
       <View style={styles.section}>
@@ -270,6 +456,25 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 80
   },
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10
+  },
+  headerSide: {
+    width: 52,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  headerCenterWrap: {
+    flex: 1,
+    alignItems: "center"
+  },
+  headerIcon: {
+    width: 45,
+    height: 45,
+    marginBottom: 20
+    },
   loadingWrap: {
     flex: 1,
     justifyContent: "center",
@@ -290,7 +495,6 @@ const styles = StyleSheet.create({
   clubCode: {
     textAlign: "center",
     color: "#6B7280",
-    marginBottom: 16
   },
   section: {
     marginTop: 14,
@@ -311,6 +515,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#6B7280",
     marginTop: 10
+  },
+  backgroundButtonsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 12
+  },
+  openCalendarButton: {
+    backgroundColor: "#7b97d4",
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: 12,
+    alignSelf: "center",
+    marginTop: 10
+  },
+  openCalendarText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "600"
   },
   badgesWrap: {
     flexDirection: "row",
@@ -388,6 +610,10 @@ const styles = StyleSheet.create({
     color: "#111827",
     marginRight: 8
   },
+  multilineInput: {
+    minHeight: 100,
+    marginRight: 0
+  },
   addBadgeButton: {
     backgroundColor: "#7b97d4",
     borderRadius: 10,
@@ -410,3 +636,8 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   }
 });
+
+
+
+
+
