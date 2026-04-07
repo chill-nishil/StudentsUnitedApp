@@ -1396,8 +1396,8 @@ function handleMemberLongPress(member: ClubMember) {
                 }
               >
                 <Image
-                  source={require("../assets/images/settingsGraphic.png")}
-                  style={styles.settingsImage}
+                  source={require("../assets/images/infoGraphic.png")}
+                  style={styles.infoImage}
                   resizeMode="contain"
                 />
               </Pressable>
@@ -1793,9 +1793,9 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     marginRight: 5,
-    marginLeft: 5
+    marginLeft: 0
   },
-  settingsImage: {
+  infoImage: {
     width: 52,
     height: 52,
     marginLeft: 5

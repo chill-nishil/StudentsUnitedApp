@@ -428,10 +428,28 @@ export default function GeneralCalendarScreen() {
     try {
       setIsLoadingPhoneEvents(true);
 
-      const startOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1, 0, 0, 0, 0);
-      const endOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59, 999);
+      const startOfMonth = new Date(
+        monthDate.getFullYear(),
+        monthDate.getMonth(),
+        1,
+        0,
+        0,
+        0,
+        0
+      );
+      const endOfMonth = new Date(
+        monthDate.getFullYear(),
+        monthDate.getMonth() + 1,
+        0,
+        23,
+        59,
+        59,
+        999
+      );
 
-      const calendars = await ExpoCalendar.getCalendarsAsync(ExpoCalendar.EntityTypes.EVENT);
+      const calendars = await ExpoCalendar.getCalendarsAsync(
+        ExpoCalendar.EntityTypes.EVENT
+      );
       const calendarIds = calendars.map(calendarItem => calendarItem.id);
 
       if (calendarIds.length === 0) {
@@ -439,20 +457,26 @@ export default function GeneralCalendarScreen() {
         return;
       }
 
-      const nativeEvents = await ExpoCalendar.getEventsAsync(calendarIds, startOfMonth, endOfMonth);
+      const nativeEvents = await ExpoCalendar.getEventsAsync(
+        calendarIds,
+        startOfMonth,
+        endOfMonth
+      );
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       const cleanedEvents: PhoneCalendarEvent[] = nativeEvents
         .map(nativeEvent => {
-          const startDate = nativeEvent.startDate instanceof Date
-            ? nativeEvent.startDate
-            : new Date(nativeEvent.startDate);
+          const startDate =
+            nativeEvent.startDate instanceof Date
+              ? nativeEvent.startDate
+              : new Date(nativeEvent.startDate);
 
-          const endDate = nativeEvent.endDate instanceof Date
-            ? nativeEvent.endDate
-            : new Date(nativeEvent.endDate);
+          const endDate =
+            nativeEvent.endDate instanceof Date
+              ? nativeEvent.endDate
+              : new Date(nativeEvent.endDate);
 
           return {
             id: nativeEvent.id,
@@ -465,7 +489,10 @@ export default function GeneralCalendarScreen() {
           };
         })
         .filter(item => {
-          if (!(item.startDate instanceof Date) || isNaN(item.startDate.getTime())) {
+          if (
+            !(item.startDate instanceof Date) ||
+            isNaN(item.startDate.getTime())
+          ) {
             return false;
           }
 
@@ -476,7 +503,17 @@ export default function GeneralCalendarScreen() {
         })
         .sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
 
-      setPhoneCalendarEvents(cleanedEvents);
+      const dedupedMap = new Map<string, PhoneCalendarEvent>();
+
+      cleanedEvents.forEach(event => {
+        const uniqueKey = `${event.id}-${event.startDate.toISOString()}`;
+
+        if (!dedupedMap.has(uniqueKey)) {
+          dedupedMap.set(uniqueKey, event);
+        }
+      });
+
+      setPhoneCalendarEvents(Array.from(dedupedMap.values()));
     } catch {
       Alert.alert("Calendar Error", "Could not load phone calendar events.");
       setPhoneCalendarEvents([]);
@@ -555,7 +592,7 @@ export default function GeneralCalendarScreen() {
     }
 
     markedDates[dateStr].dots.push({
-      key: `phone-${event.id}`,
+      key: `phone-${event.id}-${event.startDate.toISOString()}`,
       color: "#6B7280"
     });
   });
@@ -611,13 +648,6 @@ export default function GeneralCalendarScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.header}>Calendar</Text>
-
-        {/* <Text style={styles.monthLabel}>
-          {visibleMonth.toLocaleDateString([], {
-            month: "long",
-            year: "numeric"
-          })}
-        </Text> */}
 
         <Calendar
           markingType="multi-dot"
@@ -704,9 +734,7 @@ export default function GeneralCalendarScreen() {
         </View>
 
         <View style={styles.syncRow}>
-          <Text style={styles.syncLabel}>
-            Show Phone Calendar Events
-          </Text>
+          <Text style={styles.syncLabel}>Show Phone Calendar Events</Text>
 
           <View style={styles.syncRightSide}>
             {isLoadingPhoneEvents ? (
@@ -729,9 +757,7 @@ export default function GeneralCalendarScreen() {
 
         {combinedListItems.length === 0 ? (
           <View style={styles.emptyWrap}>
-            <Text style={styles.emptyText}>
-              No upcoming events to show.
-            </Text>
+            <Text style={styles.emptyText}>No upcoming events to show.</Text>
           </View>
         ) : (
           combinedListItems.map(item => {
@@ -810,7 +836,10 @@ export default function GeneralCalendarScreen() {
             const phoneEvent = item.data;
 
             return (
-              <View key={`phone-${phoneEvent.id}`} style={styles.phoneEventCard}>
+              <View
+                key={`phone-${phoneEvent.id}-${phoneEvent.startDate.toISOString()}`}
+                style={styles.phoneEventCard}
+              >
                 <Text style={styles.phoneLabel}>Phone Calendar</Text>
 
                 <Text style={styles.eventTitle}>{phoneEvent.title}</Text>
@@ -898,13 +927,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textAlign: "center",
     marginBottom: 10
-  },
-  monthLabel: {
-    textAlign: "center",
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 8
   },
   listHeader: {
     flexDirection: "row",

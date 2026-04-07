@@ -9,7 +9,7 @@ import {
   onSnapshot,
   updateDoc
 } from "firebase/firestore";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -57,9 +57,11 @@ export default function JoinClubScreen() {
   const [selectedSort, setSelectedSort] = useState<SortOption>("Alphabetical");
   const [selectedClubFilter, setSelectedClubFilter] =
     useState<ClubFilterOption>("All Clubs");
+  const [selectedBadgeFilter, setSelectedBadgeFilter] = useState("All Focuses");
 
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const [showDropdownOpen, setShowDropdownOpen] = useState(false);
+  const [badgeDropdownOpen, setBadgeDropdownOpen] = useState(false);
 
   const hasAutoNavigatedRef = useRef(false);
   const previousClubCount = useRef(0);
@@ -109,6 +111,37 @@ export default function JoinClubScreen() {
     return unsub;
   }, []);
 
+  const badgeOptions = useMemo(() => {
+    const badgeMap = new Map<string, string>();
+
+    allClubs.forEach(club => {
+      const focusBadges = Array.isArray(club.focusBadges) ? club.focusBadges : [];
+
+      focusBadges.forEach((badge: any) => {
+        if (typeof badge !== "string") return;
+
+        const trimmed = badge.trim();
+        if (!trimmed) return;
+
+        const normalizedKey = trimmed.toLowerCase();
+        if (!badgeMap.has(normalizedKey)) {
+          badgeMap.set(normalizedKey, trimmed);
+        }
+      });
+    });
+
+    return ["All Focuses", ...Array.from(badgeMap.values()).sort((a, b) => a.localeCompare(b))];
+  }, [allClubs]);
+
+  useEffect(() => {
+    if (
+      selectedBadgeFilter !== "All Focuses" &&
+      !badgeOptions.includes(selectedBadgeFilter)
+    ) {
+      setSelectedBadgeFilter("All Focuses");
+    }
+  }, [badgeOptions, selectedBadgeFilter]);
+
   useEffect(() => {
     const search = searchText.trim().toUpperCase();
 
@@ -125,6 +158,17 @@ export default function JoinClubScreen() {
       results = results.filter(club => !joinedClubIds.includes(club.id));
     }
 
+    if (selectedBadgeFilter !== "All Focuses") {
+      results = results.filter(club => {
+        const focusBadges = Array.isArray(club.focusBadges) ? club.focusBadges : [];
+        return focusBadges.some(
+          (badge: any) =>
+            typeof badge === "string" &&
+            badge.trim().toLowerCase() === selectedBadgeFilter.trim().toLowerCase()
+        );
+      });
+    }
+
     if (search) {
       const words = search.split(/\s+/).filter(Boolean);
 
@@ -135,8 +179,18 @@ export default function JoinClubScreen() {
         const clubCode =
           typeof club.clubCode === "string" ? club.clubCode.toUpperCase() : "";
 
+        const focusBadges = Array.isArray(club.focusBadges)
+          ? club.focusBadges
+              .filter((badge: any) => typeof badge === "string")
+              .join(" ")
+              .toUpperCase()
+          : "";
+
         return words.every(
-          word => clubName.includes(word) || clubCode.includes(word)
+          word =>
+            clubName.includes(word) ||
+            clubCode.includes(word) ||
+            focusBadges.includes(word)
         );
       });
     }
@@ -161,7 +215,14 @@ export default function JoinClubScreen() {
     if (results.length === 0) {
       setError("No clubs match your filters");
     }
-  }, [searchText, allClubs, joinedClubIds, selectedSort, selectedClubFilter]);
+  }, [
+    searchText,
+    allClubs,
+    joinedClubIds,
+    selectedSort,
+    selectedClubFilter,
+    selectedBadgeFilter
+  ]);
 
   async function sendJoinRequest(clubResult: any) {
     if (!clubResult || !currentUid) return;
@@ -228,6 +289,7 @@ export default function JoinClubScreen() {
   function closeTopDropdowns() {
     setSortDropdownOpen(false);
     setShowDropdownOpen(false);
+    setBadgeDropdownOpen(false);
   }
 
   return (
@@ -256,6 +318,7 @@ export default function JoinClubScreen() {
             onPress={() => {
               setSortDropdownOpen(prev => !prev);
               setShowDropdownOpen(false);
+              setBadgeDropdownOpen(false);
             }}
           >
             <Text style={styles.dropdownButtonText}>{selectedSort}</Text>
@@ -301,6 +364,7 @@ export default function JoinClubScreen() {
             onPress={() => {
               setShowDropdownOpen(prev => !prev);
               setSortDropdownOpen(false);
+              setBadgeDropdownOpen(false);
             }}
           >
             <Text style={styles.dropdownButtonText}>{selectedClubFilter}</Text>
@@ -338,6 +402,54 @@ export default function JoinClubScreen() {
             </View>
           )}
         </View>
+
+        <View style={styles.dropdownWrap}>
+          <Text style={styles.dropdownLabel}>Focus</Text>
+          <Pressable
+            style={styles.dropdownButton}
+            onPress={() => {
+              setBadgeDropdownOpen(prev => !prev);
+              setSortDropdownOpen(false);
+              setShowDropdownOpen(false);
+            }}
+          >
+            <Text style={styles.dropdownButtonText} numberOfLines={1}>
+              {selectedBadgeFilter}
+            </Text>
+            <Text style={styles.dropdownArrow}>{badgeDropdownOpen ? "▲" : "▼"}</Text>
+          </Pressable>
+
+          {badgeDropdownOpen && (
+            <View style={styles.dropdownMenu}>
+              {badgeOptions.map(option => {
+                const isSelected = selectedBadgeFilter === option;
+
+                return (
+                  <Pressable
+                    key={option}
+                    style={[
+                      styles.dropdownOption,
+                      isSelected && styles.dropdownOptionSelected
+                    ]}
+                    onPress={() => {
+                      setSelectedBadgeFilter(option);
+                      setBadgeDropdownOpen(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.dropdownOptionText,
+                        isSelected && styles.dropdownOptionTextSelected
+                      ]}
+                    >
+                      {option}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+        </View>
       </View>
 
       <Text style={styles.searchHint}>
@@ -353,6 +465,9 @@ export default function JoinClubScreen() {
         const memberCount = Array.isArray(clubResult.members)
           ? clubResult.members.length
           : 0;
+        const focusBadges = Array.isArray(clubResult.focusBadges)
+          ? clubResult.focusBadges.filter((badge: any) => typeof badge === "string" && badge.trim())
+          : [];
 
         return (
           <View key={clubResult.id} style={styles.result}>
@@ -362,6 +477,16 @@ export default function JoinClubScreen() {
                 Code: {clubResult.clubCode || "No Code"}
               </Text>
               <Text style={styles.memberCount}>Members: {memberCount}</Text>
+
+              {!!focusBadges.length && (
+                <View style={styles.badgesWrap}>
+                  {focusBadges.map((badge: string) => (
+                    <View key={`${clubResult.id}-${badge}`} style={styles.badge}>
+                      <Text style={styles.badgeText}>{badge}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
             </View>
 
             {currentClubAlreadyJoined ? (
@@ -580,6 +705,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#6B7280",
     marginBottom: 8
+  },
+  badgesWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 2,
+    marginBottom: 4
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#EEF2FF",
+    borderWidth: 1,
+    borderColor: "#C7D2FE",
+    marginRight: 8,
+    marginBottom: 8
+  },
+  badgeText: {
+    color: "#365E95",
+    fontWeight: "600",
+    fontSize: 12
   },
   positionTitle: {
     fontSize: 14,
