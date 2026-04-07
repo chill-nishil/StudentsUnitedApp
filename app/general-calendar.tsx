@@ -1,5 +1,6 @@
 import { db } from "@/FirebaseConfig";
 import BottomNav from "@/components/BottomNav";
+import * as ExpoCalendar from "expo-calendar";
 import { router } from "expo-router";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import {
@@ -16,11 +17,12 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
-  FlatList,
   Linking,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View
 } from "react-native";
@@ -32,7 +34,7 @@ type Attendee = {
   position: string;
 };
 
-type Event = {
+type ClubEvent = {
   id: string;
   clubId?: string;
   title: string;
@@ -46,10 +48,33 @@ type Event = {
   attendees?: Attendee[];
 };
 
+type PhoneCalendarEvent = {
+  id: string;
+  title: string;
+  startDate: Date;
+  endDate: Date;
+  notes?: string;
+  location?: string;
+  allDay?: boolean;
+};
+
+type CombinedListItem =
+  | {
+      source: "club";
+      sortDate: Date | null;
+      data: ClubEvent;
+    }
+  | {
+      source: "phone";
+      sortDate: Date | null;
+      data: PhoneCalendarEvent;
+    };
+
 export default function GeneralCalendarScreen() {
-  const [events, setEvents] = useState<Event[]>([]);
+  const [events, setEvents] = useState<ClubEvent[]>([]);
+  const [phoneCalendarEvents, setPhoneCalendarEvents] = useState<PhoneCalendarEvent[]>([]);
   const [selectedDate, setSelectedDate] = useState("");
-  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [visibleMonth, setVisibleMonth] = useState(new Date());
 
   const [currentUid, setCurrentUid] = useState("");
   const [currentUserName, setCurrentUserName] = useState("");
@@ -59,10 +84,14 @@ export default function GeneralCalendarScreen() {
   const [clubMemberships, setClubMemberships] = useState<any[]>([]);
 
   const [attendanceModalVisible, setAttendanceModalVisible] = useState(false);
-  const [attendanceEvent, setAttendanceEvent] = useState<Event | null>(null);
+  const [attendanceEvent, setAttendanceEvent] = useState<ClubEvent | null>(null);
 
   const [selectedClubFilter, setSelectedClubFilter] = useState("all");
   const [clubDropdownOpen, setClubDropdownOpen] = useState(false);
+
+  const [showPhoneCalendarEvents, setShowPhoneCalendarEvents] = useState(false);
+  const [calendarPermissionGranted, setCalendarPermissionGranted] = useState(false);
+  const [isLoadingPhoneEvents, setIsLoadingPhoneEvents] = useState(false);
 
   useEffect(() => {
     const auth = getAuth();
@@ -76,6 +105,7 @@ export default function GeneralCalendarScreen() {
         setClubNamesById({});
         setClubMemberships([]);
         setEvents([]);
+        setPhoneCalendarEvents([]);
         setSelectedClubFilter("all");
         return;
       }
@@ -142,7 +172,7 @@ export default function GeneralCalendarScreen() {
     const q = query(collection(db, "events"), orderBy("date", "asc"));
 
     const unsubEvents = onSnapshot(q, snapshot => {
-      const list: Event[] = snapshot.docs
+      const list: ClubEvent[] = snapshot.docs
         .map(docItem => {
           const data = docItem.data();
 
@@ -177,12 +207,11 @@ export default function GeneralCalendarScreen() {
     };
   }, [userClubIds, attendanceEvent]);
 
-  // const monthTitle = useMemo(() => {
-  //   return calendarMonth.toLocaleDateString([], {
-  //     month: "long",
-  //     year: "numeric"
-  //   });
-  // }, [calendarMonth]);
+  useEffect(() => {
+    if (!showPhoneCalendarEvents || !calendarPermissionGranted) return;
+
+    loadPhoneCalendarEventsForMonth(visibleMonth);
+  }, [showPhoneCalendarEvents, calendarPermissionGranted, visibleMonth]);
 
   const userClubOptions = useMemo(() => {
     return userClubIds.map(clubId => ({
@@ -228,27 +257,54 @@ export default function GeneralCalendarScreen() {
     return "";
   };
 
-  const getEventDateText = (dateValue: any) => {
-    if (!dateValue?.toDate) return "";
-    return dateValue.toDate().toLocaleDateString();
+  const getFirestoreDate = (value: any): Date | null => {
+    if (!value) return null;
+
+    if (typeof value?.toDate === "function") {
+      const d = value.toDate();
+      return d instanceof Date && !isNaN(d.getTime()) ? d : null;
+    }
+
+    if (value instanceof Date) {
+      return !isNaN(value.getTime()) ? value : null;
+    }
+
+    return null;
   };
 
-  const getEventTimeRangeText = (item: Event) => {
+  const getClubEventBaseDate = (item: ClubEvent): Date | null => {
+    return getFirestoreDate(item.date);
+  };
+
+  const getClubEventSortDate = (item: ClubEvent): Date | null => {
+    if (item.eventType === "time") {
+      return getFirestoreDate(item.startDate) || getFirestoreDate(item.date);
+    }
+
+    return getFirestoreDate(item.date);
+  };
+
+  const getClubEventDateText = (dateValue: any) => {
+    const safeDate = getFirestoreDate(dateValue);
+    if (!safeDate) return "";
+    return safeDate.toLocaleDateString();
+  };
+
+  const getClubEventTimeRangeText = (item: ClubEvent) => {
     if (item.eventType === "all-day") {
       return "All-Day";
     }
 
-    if (
-      item.eventType === "time" &&
-      item.startDate?.toDate &&
-      item.endDate?.toDate
-    ) {
-      const startText = item.startDate.toDate().toLocaleTimeString([], {
+    const startDate = getFirestoreDate(item.startDate);
+    const endDate = getFirestoreDate(item.endDate);
+
+    if (item.eventType === "time" && startDate && endDate) {
+      const startText = startDate.toLocaleTimeString([], {
         hour: "numeric",
         minute: "2-digit"
       });
 
-      const endText = item.endDate.toDate().toLocaleTimeString([], {
+      const endText = endDate.toLocaleTimeString([], {
         hour: "numeric",
         minute: "2-digit"
       });
@@ -259,10 +315,30 @@ export default function GeneralCalendarScreen() {
     return "";
   };
 
-  const openInMaps = async (item: Event) => {
-    try {
-      const safeAddress = getSafeAddressText(item.locationAddress);
+  const getPhoneEventDateText = (item: PhoneCalendarEvent) => {
+    return item.startDate.toLocaleDateString();
+  };
 
+  const getPhoneEventTimeRangeText = (item: PhoneCalendarEvent) => {
+    if (item.allDay) {
+      return "All-Day";
+    }
+
+    const startText = item.startDate.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit"
+    });
+
+    const endText = item.endDate.toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit"
+    });
+
+    return `${startText} - ${endText}`;
+  };
+
+  const openInMaps = async (safeAddress: string) => {
+    try {
       if (!safeAddress) {
         Alert.alert("No address", "This event does not have an address yet.");
         return;
@@ -285,7 +361,7 @@ export default function GeneralCalendarScreen() {
     }
   };
 
-  const isAttendingEvent = (item: Event) => {
+  const isAttendingEvent = (item: ClubEvent) => {
     return !!item.attendees?.some(attendee => attendee.uid === currentUid);
   };
 
@@ -297,7 +373,7 @@ export default function GeneralCalendarScreen() {
     };
   };
 
-  const toggleAttendance = async (item: Event) => {
+  const toggleAttendance = async (item: ClubEvent) => {
     if (!currentUid) return;
 
     try {
@@ -319,209 +395,452 @@ export default function GeneralCalendarScreen() {
     }
   };
 
-  const openAttendanceList = (item: Event) => {
+  const openAttendanceList = (item: ClubEvent) => {
     setAttendanceEvent(item);
     setAttendanceModalVisible(true);
   };
 
-  const clubFilteredEvents =
-  selectedClubFilter === "all"
-    ? events
-    : events.filter(event => event.clubId === selectedClubFilter);
+  const requestCalendarAccess = async () => {
+    try {
+      const currentPermissions = await ExpoCalendar.getCalendarPermissionsAsync();
 
-const today = new Date();
-today.setHours(0, 0, 0, 0);
+      if (currentPermissions.granted) {
+        setCalendarPermissionGranted(true);
+        return true;
+      }
 
-const upcomingClubFilteredEvents = clubFilteredEvents.filter(event => {
-  const eventDate = event.date?.toDate?.();
+      const requestedPermissions = await ExpoCalendar.requestCalendarPermissionsAsync();
 
-  if (!eventDate) return false;
+      if (requestedPermissions.granted) {
+        setCalendarPermissionGranted(true);
+        return true;
+      }
 
-  const normalizedEventDate = new Date(eventDate);
-  normalizedEventDate.setHours(0, 0, 0, 0);
-
-  return normalizedEventDate.getTime() >= today.getTime();
-});
-
-const markedDates: any = {};
-
-upcomingClubFilteredEvents.forEach(event => {
-  const dateStr = event.date?.toDate?.().toISOString().split("T")[0];
-
-  if (!dateStr) return;
-
-  markedDates[dateStr] = {
-    marked: true,
-    dotColor: "#2563EB"
+      setCalendarPermissionGranted(false);
+      return false;
+    } catch {
+      setCalendarPermissionGranted(false);
+      return false;
+    }
   };
-});
 
-const filteredEvents = selectedDate
-  ? upcomingClubFilteredEvents.filter(event => {
-      const dateStr = event.date?.toDate?.().toISOString().split("T")[0];
-      return dateStr === selectedDate;
-    })
-  : upcomingClubFilteredEvents;
+  const loadPhoneCalendarEventsForMonth = async (monthDate: Date) => {
+    try {
+      setIsLoadingPhoneEvents(true);
+
+      const startOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1, 0, 0, 0, 0);
+      const endOfMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59, 999);
+
+      const calendars = await ExpoCalendar.getCalendarsAsync(ExpoCalendar.EntityTypes.EVENT);
+      const calendarIds = calendars.map(calendarItem => calendarItem.id);
+
+      if (calendarIds.length === 0) {
+        setPhoneCalendarEvents([]);
+        return;
+      }
+
+      const nativeEvents = await ExpoCalendar.getEventsAsync(calendarIds, startOfMonth, endOfMonth);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const cleanedEvents: PhoneCalendarEvent[] = nativeEvents
+        .map(nativeEvent => {
+          const startDate = nativeEvent.startDate instanceof Date
+            ? nativeEvent.startDate
+            : new Date(nativeEvent.startDate);
+
+          const endDate = nativeEvent.endDate instanceof Date
+            ? nativeEvent.endDate
+            : new Date(nativeEvent.endDate);
+
+          return {
+            id: nativeEvent.id,
+            title: nativeEvent.title || "Untitled Event",
+            startDate,
+            endDate,
+            notes: nativeEvent.notes || "",
+            location: nativeEvent.location || "",
+            allDay: !!nativeEvent.allDay
+          };
+        })
+        .filter(item => {
+          if (!(item.startDate instanceof Date) || isNaN(item.startDate.getTime())) {
+            return false;
+          }
+
+          const normalizedStart = new Date(item.startDate);
+          normalizedStart.setHours(0, 0, 0, 0);
+
+          return normalizedStart.getTime() >= today.getTime();
+        })
+        .sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+
+      setPhoneCalendarEvents(cleanedEvents);
+    } catch {
+      Alert.alert("Calendar Error", "Could not load phone calendar events.");
+      setPhoneCalendarEvents([]);
+    } finally {
+      setIsLoadingPhoneEvents(false);
+    }
+  };
+
+  const handlePhoneCalendarToggle = async (value: boolean) => {
+    if (!value) {
+      setShowPhoneCalendarEvents(false);
+      setPhoneCalendarEvents([]);
+      return;
+    }
+
+    const granted = await requestCalendarAccess();
+
+    if (!granted) {
+      Alert.alert(
+        "Permission Needed",
+        "Allow calendar access to show your phone calendar events in this screen."
+      );
+      setShowPhoneCalendarEvents(false);
+      return;
+    }
+
+    setShowPhoneCalendarEvents(true);
+  };
+
+  const clubFilteredEvents =
+    selectedClubFilter === "all"
+      ? events
+      : events.filter(event => event.clubId === selectedClubFilter);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const upcomingClubFilteredEvents = clubFilteredEvents.filter(event => {
+    const eventDate = getClubEventBaseDate(event);
+
+    if (!eventDate) return false;
+
+    const normalizedEventDate = new Date(eventDate);
+    normalizedEventDate.setHours(0, 0, 0, 0);
+
+    return normalizedEventDate.getTime() >= today.getTime();
+  });
+
+  const visiblePhoneEvents = showPhoneCalendarEvents
+    ? phoneCalendarEvents
+    : [];
+
+  const markedDates: any = {};
+
+  upcomingClubFilteredEvents.forEach(event => {
+    const eventDate = getClubEventBaseDate(event);
+    if (!eventDate) return;
+
+    const dateStr = eventDate.toISOString().split("T")[0];
+
+    if (!markedDates[dateStr]) {
+      markedDates[dateStr] = { dots: [] as any[] };
+    }
+
+    markedDates[dateStr].dots.push({
+      key: `club-${event.id}`,
+      color: "#2563EB"
+    });
+  });
+
+  visiblePhoneEvents.forEach(event => {
+    const dateStr = event.startDate.toISOString().split("T")[0];
+
+    if (!markedDates[dateStr]) {
+      markedDates[dateStr] = { dots: [] as any[] };
+    }
+
+    markedDates[dateStr].dots.push({
+      key: `phone-${event.id}`,
+      color: "#6B7280"
+    });
+  });
+
+  const filteredClubEvents = selectedDate
+    ? upcomingClubFilteredEvents.filter(event => {
+        const eventDate = getClubEventBaseDate(event);
+        if (!eventDate) return false;
+
+        const dateStr = eventDate.toISOString().split("T")[0];
+        return dateStr === selectedDate;
+      })
+    : upcomingClubFilteredEvents;
+
+  const filteredPhoneEvents = selectedDate
+    ? visiblePhoneEvents.filter(event => {
+        const dateStr = event.startDate.toISOString().split("T")[0];
+        return dateStr === selectedDate;
+      })
+    : visiblePhoneEvents;
+
+  const combinedListItems: CombinedListItem[] = [
+    ...filteredClubEvents.map(event => ({
+      source: "club" as const,
+      sortDate: getClubEventSortDate(event),
+      data: event
+    })),
+    ...filteredPhoneEvents.map(event => ({
+      source: "phone" as const,
+      sortDate: event.startDate,
+      data: event
+    }))
+  ].sort((a, b) => {
+    const aTime = a.sortDate ? a.sortDate.getTime() : 0;
+    const bTime = b.sortDate ? b.sortDate.getTime() : 0;
+    return aTime - bTime;
+  });
 
   if (selectedDate) {
     markedDates[selectedDate] = {
       ...(markedDates[selectedDate] || {}),
       selected: true,
-      selectedColor: "#2563EB"
+      selectedColor: "#2563EB",
+      dots: markedDates[selectedDate]?.dots || []
     };
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.header}>Calendar</Text> 
-      <Calendar
-        markedDates={markedDates}
-        enableSwipeMonths={true}
-        onDayPress={day => {
-          setSelectedDate(prev =>
-            prev === day.dateString ? "" : day.dateString
-          );
-        }}
-        onMonthChange={month => {
-          setCalendarMonth(new Date(month.year, month.month - 1, 1));
-        }}
-      />
+    <>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.header}>Calendar</Text>
 
-      <View style={styles.listHeader}>
-        <Text style={styles.subHeader}>
-          {selectedDate
-            ? `Events on ${selectedDate}`
-            : selectedClubFilter === "all"
-            ? "All Club Events"
-            : `${selectedClubName} Events`}
-        </Text>
+        {/* <Text style={styles.monthLabel}>
+          {visibleMonth.toLocaleDateString([], {
+            month: "long",
+            year: "numeric"
+          })}
+        </Text> */}
 
-        <View style={styles.rightHeaderControls}>
-          <View style={styles.dropdownWrap}>
-            <Pressable
-              style={styles.dropdownButton}
-              onPress={() => setClubDropdownOpen(prev => !prev)}
-            >
-              <Text style={styles.dropdownButtonText} numberOfLines={1}>
-                {selectedClubName}
-              </Text>
-              <Text style={styles.dropdownArrow}>
-                {clubDropdownOpen ? "▲" : "▼"}
-              </Text>
-            </Pressable>
+        <Calendar
+          markingType="multi-dot"
+          markedDates={markedDates}
+          enableSwipeMonths={true}
+          onDayPress={day => {
+            setSelectedDate(prev =>
+              prev === day.dateString ? "" : day.dateString
+            );
+          }}
+          onMonthChange={month => {
+            setVisibleMonth(new Date(month.year, month.month - 1, 1));
+          }}
+        />
 
-            {clubDropdownOpen && (
-              <View style={styles.dropdownMenu}>
-                <Pressable
-                  style={styles.dropdownOption}
-                  onPress={() => {
-                    setSelectedClubFilter("all");
-                    setClubDropdownOpen(false);
-                  }}
-                >
-                  <Text style={styles.dropdownOptionText}>All Clubs</Text>
-                </Pressable>
+        <View style={styles.listHeader}>
+          <Text style={styles.subHeader}>
+            {selectedDate
+              ? `Events on ${selectedDate}`
+              : selectedClubFilter === "all"
+              ? "Upcoming Events"
+              : `Upcoming ${selectedClubName} Events`}
+          </Text>
 
-                {userClubOptions.map(club => (
+          <View style={styles.rightHeaderControls}>
+            <View style={styles.dropdownWrap}>
+              <Pressable
+                style={styles.dropdownButton}
+                onPress={() => setClubDropdownOpen(prev => !prev)}
+              >
+                <Text style={styles.dropdownButtonText} numberOfLines={1}>
+                  {selectedClubName}
+                </Text>
+                <Text style={styles.dropdownArrow}>
+                  {clubDropdownOpen ? "▲" : "▼"}
+                </Text>
+              </Pressable>
+
+              {clubDropdownOpen && (
+                <View style={styles.dropdownMenu}>
                   <Pressable
-                    key={club.id}
                     style={styles.dropdownOption}
                     onPress={() => {
-                      setSelectedClubFilter(club.id);
+                      setSelectedClubFilter("all");
                       setClubDropdownOpen(false);
                     }}
                   >
-                    <Text style={styles.dropdownOptionText}>{club.name}</Text>
+                    <Text style={styles.dropdownOptionText}>All Clubs</Text>
                   </Pressable>
-                ))}
-              </View>
+
+                  {userClubOptions.map(club => (
+                    <Pressable
+                      key={club.id}
+                      style={styles.dropdownOption}
+                      onPress={() => {
+                        setSelectedClubFilter(club.id);
+                        setClubDropdownOpen(false);
+                      }}
+                    >
+                      <Text style={styles.dropdownOptionText}>{club.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {canAddEventsForSelectedClub && (
+              <Pressable
+                style={styles.addEventButton}
+                onPress={() =>
+                  router.push({
+                    pathname: "/add-event",
+                    params: {
+                      clubId: selectedClubFilter,
+                      clubName: selectedClubName
+                    }
+                  })
+                }
+              >
+                <Text style={styles.addEventButtonText}>Add Event</Text>
+              </Pressable>
             )}
           </View>
-
-          {canAddEventsForSelectedClub && (
-            <Pressable
-              style={styles.addEventButton}
-              onPress={() =>
-                router.push({
-                  pathname: "/add-event",
-                  params: {
-                    clubId: selectedClubFilter,
-                    clubName: selectedClubName
-                  }
-                })
-              }
-            >
-              <Text style={styles.addEventButtonText}>Add Event</Text>
-            </Pressable>
-          )}
         </View>
-      </View>
 
-      <FlatList
-        data={filteredEvents}
-        keyExtractor={item => item.id}
-        contentContainerStyle={{ paddingBottom: 120 }}
-        renderItem={({ item }) => {
-          const safeLocation = getSafeLocationText(item.location);
-          const attendeeCount = item.attendees?.length ?? 0;
-          const attending = isAttendingEvent(item);
-          const clubName = item.clubId ? clubNamesById[item.clubId] || "Club" : "Club";
+        <View style={styles.syncRow}>
+          <Text style={styles.syncLabel}>
+            Show Phone Calendar Events
+          </Text>
 
-          return (
-            <View style={styles.eventCard}>
-              <Text style={styles.clubLabel}>{clubName}</Text>
+          <View style={styles.syncRightSide}>
+            {isLoadingPhoneEvents ? (
+              <Text style={styles.syncStatus}>Loading...</Text>
+            ) : showPhoneCalendarEvents ? (
+              <Text style={styles.syncStatus}>On</Text>
+            ) : (
+              <Text style={styles.syncStatus}>Off</Text>
+            )}
 
-              <Text style={styles.eventTitle}>{item.title}</Text>
+            <Switch
+              value={showPhoneCalendarEvents}
+              onValueChange={handlePhoneCalendarToggle}
+              trackColor={{ false: "#D1D5DB", true: "#93C5FD" }}
+              thumbColor={showPhoneCalendarEvents ? "#2563EB" : "#F9FAFB"}
+              ios_backgroundColor="#D1D5DB"
+            />
+          </View>
+        </View>
 
-              <View style={styles.dateRow}>
-                <Text style={styles.eventDate}>
-                  {getEventDateText(item.date)}
-                </Text>
+        {combinedListItems.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyText}>
+              No upcoming events to show.
+            </Text>
+          </View>
+        ) : (
+          combinedListItems.map(item => {
+            if (item.source === "club") {
+              const clubEvent = item.data;
+              const safeLocation = getSafeLocationText(clubEvent.location);
+              const attendeeCount = clubEvent.attendees?.length ?? 0;
+              const attending = isAttendingEvent(clubEvent);
+              const clubName = clubEvent.clubId
+                ? clubNamesById[clubEvent.clubId] || "Club"
+                : "Club";
 
-                <Text style={styles.eventTime}>
-                  {getEventTimeRangeText(item)}
-                </Text>
-              </View>
+              return (
+                <View key={`club-${clubEvent.id}`} style={styles.eventCard}>
+                  <Text style={styles.clubLabel}>{clubName}</Text>
 
-              {!!safeLocation && (
-                <Pressable onPress={() => openInMaps(item)}>
-                  <Text style={styles.eventLocation}>{safeLocation}</Text>
-                </Pressable>
-              )}
+                  <Text style={styles.eventTitle}>{clubEvent.title}</Text>
 
-              <Text style={styles.eventDescription}>{item.description}</Text>
+                  <View style={styles.dateRow}>
+                    <Text style={styles.eventDate}>
+                      {getClubEventDateText(clubEvent.date)}
+                    </Text>
 
-              <View style={styles.attendanceRow}>
-                <Pressable
-                  style={styles.checkboxRow}
-                  onPress={() => toggleAttendance(item)}
-                >
-                  <View
-                    style={[
-                      styles.checkbox,
-                      attending && styles.checkboxChecked
-                    ]}
-                  >
-                    {attending && <Text style={styles.checkmark}>✓</Text>}
+                    <Text style={styles.eventTime}>
+                      {getClubEventTimeRangeText(clubEvent)}
+                    </Text>
                   </View>
 
-                  <Text style={styles.checkboxLabel}>
-                    {attending ? "You are attending" : "Sign Up"}
+                  {!!safeLocation && (
+                    <Pressable
+                      onPress={() =>
+                        openInMaps(getSafeAddressText(clubEvent.locationAddress))
+                      }
+                    >
+                      <Text style={styles.eventLocation}>{safeLocation}</Text>
+                    </Pressable>
+                  )}
+
+                  <Text style={styles.eventDescription}>
+                    {clubEvent.description}
                   </Text>
-                </Pressable>
 
-                <Text style={styles.attendeeCount}>
-                  {attendeeCount} attending
-                </Text>
+                  <View style={styles.attendanceRow}>
+                    <Pressable
+                      style={styles.checkboxRow}
+                      onPress={() => toggleAttendance(clubEvent)}
+                    >
+                      <View
+                        style={[
+                          styles.checkbox,
+                          attending && styles.checkboxChecked
+                        ]}
+                      >
+                        {attending && <Text style={styles.checkmark}>✓</Text>}
+                      </View>
+
+                      <Text style={styles.checkboxLabel}>
+                        {attending ? "You are attending" : "Sign Up"}
+                      </Text>
+                    </Pressable>
+
+                    <Text style={styles.attendeeCount}>
+                      {attendeeCount} attending
+                    </Text>
+                  </View>
+
+                  <Pressable onPress={() => openAttendanceList(clubEvent)}>
+                    <Text style={styles.attendanceLink}>
+                      View attendance list
+                    </Text>
+                  </Pressable>
+                </View>
+              );
+            }
+
+            const phoneEvent = item.data;
+
+            return (
+              <View key={`phone-${phoneEvent.id}`} style={styles.phoneEventCard}>
+                <Text style={styles.phoneLabel}>Phone Calendar</Text>
+
+                <Text style={styles.eventTitle}>{phoneEvent.title}</Text>
+
+                <View style={styles.dateRow}>
+                  <Text style={styles.eventDate}>
+                    {getPhoneEventDateText(phoneEvent)}
+                  </Text>
+
+                  <Text style={styles.eventTime}>
+                    {getPhoneEventTimeRangeText(phoneEvent)}
+                  </Text>
+                </View>
+
+                {!!phoneEvent.location && (
+                  <Text style={styles.phoneLocation}>
+                    {phoneEvent.location}
+                  </Text>
+                )}
+
+                {!!phoneEvent.notes && (
+                  <Text style={styles.eventDescription}>
+                    {phoneEvent.notes}
+                  </Text>
+                )}
               </View>
-
-              <Pressable onPress={() => openAttendanceList(item)}>
-                <Text style={styles.attendanceLink}>View attendance list</Text>
-              </Pressable>
-            </View>
-          );
-        }}
-      />
+            );
+          })
+        )}
+      </ScrollView>
 
       <Modal
         visible={attendanceModalVisible}
@@ -540,16 +859,14 @@ const filteredEvents = selectedDate
                 No one has signed up yet.
               </Text>
             ) : (
-              <FlatList
-                data={attendanceEvent.attendees}
-                keyExtractor={item => item.uid}
-                renderItem={({ item }) => (
-                  <View style={styles.attendeeRow}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {attendanceEvent.attendees.map(item => (
+                  <View key={item.uid} style={styles.attendeeRow}>
                     <Text style={styles.attendeeName}>{item.name}</Text>
                     <Text style={styles.attendeePosition}>{item.position}</Text>
                   </View>
-                )}
-              />
+                ))}
+              </ScrollView>
             )}
 
             <Pressable
@@ -563,28 +880,38 @@ const filteredEvents = selectedDate
       </Modal>
 
       <BottomNav />
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#dbeafe",
+    backgroundColor: "#dbeafe"
+  },
+  contentContainer: {
     padding: 18,
-    paddingBottom: 95
+    paddingBottom: 120
   },
   header: {
     fontSize: 22,
     fontWeight: "700",
     textAlign: "center",
-    marginBottom: 16
+    marginBottom: 10
+  },
+  monthLabel: {
+    textAlign: "center",
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 8
   },
   listHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    marginVertical: 12,
+    marginTop: 12,
+    marginBottom: 8,
     zIndex: 1000
   },
   subHeader: {
@@ -661,14 +988,54 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600"
   },
+  syncRow: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  syncLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#111827",
+    marginRight: 10
+  },
+  syncRightSide: {
+    flexDirection: "row",
+    alignItems: "center"
+  },
+  syncStatus: {
+    marginRight: 8,
+    color: "#6B7280",
+    fontSize: 12,
+    fontWeight: "600"
+  },
   eventCard: {
     backgroundColor: "white",
     borderRadius: 12,
     padding: 14,
     marginBottom: 12
   },
+  phoneEventCard: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#CBD5E1"
+  },
   clubLabel: {
     color: "#7b97d4",
+    fontWeight: "700",
+    marginBottom: 6
+  },
+  phoneLabel: {
+    color: "#6B7280",
     fontWeight: "700",
     marginBottom: 6
   },
@@ -692,6 +1059,10 @@ const styles = StyleSheet.create({
     marginTop: 4,
     color: "#1D4ED8",
     textDecorationLine: "underline"
+  },
+  phoneLocation: {
+    marginTop: 4,
+    color: "#475569"
   },
   eventDescription: {
     marginTop: 6,
@@ -739,6 +1110,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
     color: "#1D4ED8",
     textDecorationLine: "underline",
+    fontWeight: "500"
+  },
+  emptyWrap: {
+    backgroundColor: "white",
+    borderRadius: 12,
+    padding: 18,
+    alignItems: "center"
+  },
+  emptyText: {
+    color: "#6B7280",
     fontWeight: "500"
   },
   modalOverlay: {
