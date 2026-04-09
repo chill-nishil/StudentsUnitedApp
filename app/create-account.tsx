@@ -27,8 +27,7 @@ export default function CreateAccountScreen() {
   const [clubName, setClubName] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-
-  const isPresident = position.trim().toLowerCase() === "president";
+  const isPresident = position.trim().toLowerCase() === "president"; // dont need
 
   const handleCreateAccount = async () => {
     console.log("CREATE ACCOUNT START");
@@ -43,12 +42,8 @@ export default function CreateAccountScreen() {
       return;
     }
 
-    // if (isPresident && !clubName) {
-    //   alert("Please enter your club name");
-    //   return;
-    // }
 
-    const normalizedClubName = isPresident ? clubName.trim().toUpperCase() : null;
+    const normalizedClubName = isPresident ? clubName.trim().toUpperCase() : null; // dont need
 
     try {
       setLoading(true);
@@ -67,11 +62,11 @@ export default function CreateAccountScreen() {
 
       console.log("CREATING USER DOC");
 
+      // Creates Firestore user document 
       await setDoc(doc(db, "users", uid), {
         uid,
         name: name.trim(),
         email: cleanEmail,
-        // position,
         clubName: normalizedClubName,
         clubIds: [],
         clubNames: [],
@@ -134,6 +129,7 @@ export default function CreateAccountScreen() {
               secureTextEntry={!showPassword}
               style={styles.passwordInput}
             />
+
             <Pressable onPress={() => setShowPassword(!showPassword)}>
               <Ionicons
                 name={showPassword ? "eye-off" : "eye"}
@@ -152,6 +148,7 @@ export default function CreateAccountScreen() {
               secureTextEntry={!showPassword}
               style={styles.passwordInput}
             />
+
             <Pressable onPress={() => setShowPassword(!showPassword)}>
               <Ionicons
                 name={showPassword ? "eye-off" : "eye"}
@@ -160,28 +157,6 @@ export default function CreateAccountScreen() {
               />
             </Pressable>
           </View>
-
-          {/* 
-          <TextInput
-            placeholder="Position (e.g. President, Member)"
-            placeholderTextColor="#6B7280"
-            value={position}
-            onChangeText={setPosition}
-            style={styles.input}
-          />
-          */}
-
-          {/* 
-          {isPresident && (
-            <TextInput
-              placeholder="Club name"
-              placeholderTextColor="#6B7280"
-              value={clubName}
-              onChangeText={setClubName}
-              style={styles.input}
-            />
-          )}
-          */}
 
           <Pressable
             style={[styles.button, loading && styles.disabled]}
@@ -209,6 +184,7 @@ const styles = StyleSheet.create({
     color: "#315680",
     fontSize: 20,
     textAlign: "center",
+    marginTop: 20,
     marginBottom: 24
   },
   input: {
@@ -248,8 +224,8 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   },
   logo: {
-    width: 300,
-    height: 280,
+    width: 280,
+    height: 200,
     alignSelf: "center",
     resizeMode: "contain"
   }

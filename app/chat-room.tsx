@@ -1431,30 +1431,6 @@ function handleMemberLongPress(member: ClubMember) {
                 />
               </Pressable>
             </View>
-
-            {/* {isPresident && (
-              <View style={{ flexDirection: "row", justifyContent: "center", gap: 12 }}>
-                <Pressable
-                  style={styles.openCalendarButton}
-                  onPress={pickChatBackground}
-                  disabled={isPickingBackground}
-                >
-                  <Text style={styles.openCalendarText}>
-                    {isPickingBackground ? "..." : "Chat Background"}
-                  </Text>
-                </Pressable>
-
-                {!!chatBackgroundBase64 && (
-                  <Pressable
-                    style={styles.openCalendarButton}
-                    onPress={clearChatBackground}
-                  >
-                    <Text style={styles.openCalendarText}>Remove Background</Text>
-                  </Pressable>
-                )}
-              </View>
-            )} */}
-
             <View style={styles.chatArea}>{ChatBody}</View>
           </View>
         );

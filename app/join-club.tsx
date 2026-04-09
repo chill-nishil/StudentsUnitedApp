@@ -64,6 +64,8 @@ export default function JoinClubScreen() {
   const [badgeDropdownOpen, setBadgeDropdownOpen] = useState(false);
 
   const hasAutoNavigatedRef = useRef(false);
+
+  // Tracks previous joined club count so the screen knows when a new club was added
   const previousClubCount = useRef(0);
 
   useEffect(() => {
@@ -84,6 +86,7 @@ export default function JoinClubScreen() {
       setJoinedClubIds(nextJoinedClubIds);
       setPendingClubRequests(nextPendingClubRequests);
 
+      // If the user just got accepted into a new club, send them back to the dashboard once
       if (
         nextJoinedClubIds.length > previousClubCount.current &&
         previousClubCount.current !== 0 &&
@@ -112,6 +115,7 @@ export default function JoinClubScreen() {
   }, []);
 
   const badgeOptions = useMemo(() => {
+    // Build a unique list of all focus badges used across clubs
     const badgeMap = new Map<string, string>();
 
     allClubs.forEach(club => {
@@ -152,12 +156,14 @@ export default function JoinClubScreen() {
 
     let results = [...allClubs];
 
+    // Filter by join status
     if (selectedClubFilter === "Joined Clubs") {
       results = results.filter(club => joinedClubIds.includes(club.id));
     } else if (selectedClubFilter === "Clubs Not Joined") {
       results = results.filter(club => !joinedClubIds.includes(club.id));
     }
 
+    // Filter by selected focus badge
     if (selectedBadgeFilter !== "All Focuses") {
       results = results.filter(club => {
         const focusBadges = Array.isArray(club.focusBadges) ? club.focusBadges : [];
@@ -169,6 +175,7 @@ export default function JoinClubScreen() {
       });
     }
 
+    // Search by club name, club code, or focus badges
     if (search) {
       const words = search.split(/\s+/).filter(Boolean);
 
@@ -316,6 +323,7 @@ export default function JoinClubScreen() {
           <Pressable
             style={styles.dropdownButton}
             onPress={() => {
+              // Toggle sort dropdown and close the others
               setSortDropdownOpen(prev => !prev);
               setShowDropdownOpen(false);
               setBadgeDropdownOpen(false);
@@ -338,6 +346,7 @@ export default function JoinClubScreen() {
                       isSelected && styles.dropdownOptionSelected
                     ]}
                     onPress={() => {
+                      // Save selected sort option and close the menu
                       setSelectedSort(option);
                       setSortDropdownOpen(false);
                     }}
@@ -362,6 +371,7 @@ export default function JoinClubScreen() {
           <Pressable
             style={styles.dropdownButton}
             onPress={() => {
+              // Toggle club-status dropdown and close the others
               setShowDropdownOpen(prev => !prev);
               setSortDropdownOpen(false);
               setBadgeDropdownOpen(false);
@@ -384,6 +394,7 @@ export default function JoinClubScreen() {
                       isSelected && styles.dropdownOptionSelected
                     ]}
                     onPress={() => {
+                      // Save selected club filter and close the menu
                       setSelectedClubFilter(option);
                       setShowDropdownOpen(false);
                     }}
@@ -408,6 +419,7 @@ export default function JoinClubScreen() {
           <Pressable
             style={styles.dropdownButton}
             onPress={() => {
+              // Toggle focus-badge dropdown and close the others
               setBadgeDropdownOpen(prev => !prev);
               setSortDropdownOpen(false);
               setShowDropdownOpen(false);
@@ -432,6 +444,7 @@ export default function JoinClubScreen() {
                       isSelected && styles.dropdownOptionSelected
                     ]}
                     onPress={() => {
+                      // Save selected badge filter and close the menu
                       setSelectedBadgeFilter(option);
                       setBadgeDropdownOpen(false);
                     }}
@@ -502,8 +515,10 @@ export default function JoinClubScreen() {
                 <Pressable
                   style={styles.positionHeader}
                   onPress={() => {
+                    // Close top dropdowns before opening the position selector
                     closeTopDropdowns();
 
+                    // Toggle the current club's position picker
                     if (positionOpen) {
                       setPositionOpenClubId(null);
                     } else {
@@ -531,6 +546,7 @@ export default function JoinClubScreen() {
                             isSelected && styles.positionOptionSelected
                           ]}
                           onPress={() => {
+                            // Save selected position and clear custom text unless "Other Position" is chosen
                             setSelectedPosition(option);
                             if (option !== "Other Position") {
                               setOtherPosition("");
@@ -631,6 +647,7 @@ const styles = StyleSheet.create({
   dropdownButtonText: {
     color: "#111827",
     fontWeight: "500",
+    fontSize: 7,
     flex: 1,
     marginRight: 10
   },
@@ -666,7 +683,8 @@ const styles = StyleSheet.create({
   },
   dropdownOptionText: {
     color: "#111827",
-    fontWeight: "500"
+    fontWeight: "500", 
+    fontSize: 9
   },
   dropdownOptionTextSelected: {
     color: "#365E95",

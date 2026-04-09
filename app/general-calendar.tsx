@@ -1,7 +1,7 @@
 import { db } from "@/FirebaseConfig";
 import BottomNav from "@/components/BottomNav";
 import * as ExpoCalendar from "expo-calendar";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import {
   arrayRemove,
@@ -14,7 +14,7 @@ import {
   query,
   updateDoc
 } from "firebase/firestore";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
   Linking,
@@ -71,6 +71,13 @@ type CombinedListItem =
     };
 
 export default function GeneralCalendarScreen() {
+  const params = useLocalSearchParams<{ clubId?: string; clubName?: string }>();
+
+  const initialClubId =
+    typeof params.clubId === "string" && params.clubId.trim()
+      ? params.clubId
+      : "all";
+
   const [events, setEvents] = useState<ClubEvent[]>([]);
   const [phoneCalendarEvents, setPhoneCalendarEvents] = useState<PhoneCalendarEvent[]>([]);
   const [selectedDate, setSelectedDate] = useState("");
@@ -86,8 +93,10 @@ export default function GeneralCalendarScreen() {
   const [attendanceModalVisible, setAttendanceModalVisible] = useState(false);
   const [attendanceEvent, setAttendanceEvent] = useState<ClubEvent | null>(null);
 
-  const [selectedClubFilter, setSelectedClubFilter] = useState("all");
+  const [selectedClubFilter, setSelectedClubFilter] = useState(initialClubId);
   const [clubDropdownOpen, setClubDropdownOpen] = useState(false);
+
+  const selectedClubRef = useRef(initialClubId);
 
   const [showPhoneCalendarEvents, setShowPhoneCalendarEvents] = useState(false);
   const [calendarPermissionGranted, setCalendarPermissionGranted] = useState(false);
@@ -107,6 +116,7 @@ export default function GeneralCalendarScreen() {
         setEvents([]);
         setPhoneCalendarEvents([]);
         setSelectedClubFilter("all");
+        selectedClubRef.current = "all";
         return;
       }
 
@@ -125,19 +135,25 @@ export default function GeneralCalendarScreen() {
         ? userData.clubIds
         : [];
 
+      const nextClubId =
+        initialClubId !== "all" && clubIds.includes(initialClubId)
+          ? initialClubId
+          : "all";
+
       setCurrentUserName(userData.name ?? "");
       setCurrentUserPosition(userData.position ?? "");
       setUserClubIds(clubIds);
       setClubMemberships(
         Array.isArray(userData.clubMemberships) ? userData.clubMemberships : []
       );
-      setSelectedClubFilter("all");
+      setSelectedClubFilter(nextClubId);
+      selectedClubRef.current = nextClubId;
     });
 
     return () => {
       unsubAuth();
     };
-  }, []);
+  }, [initialClubId]);
 
   useEffect(() => {
     if (userClubIds.length === 0) {
@@ -145,6 +161,7 @@ export default function GeneralCalendarScreen() {
       return;
     }
 
+    // Listen to clubs collection and build a name lookup only for clubs this user belongs to
     const unsubClubs = onSnapshot(collection(db, "clubs"), snapshot => {
       const nextMap: Record<string, string> = {};
 
@@ -162,6 +179,13 @@ export default function GeneralCalendarScreen() {
       unsubClubs();
     };
   }, [userClubIds]);
+
+  useEffect(() => {
+    if (initialClubId !== "all" && userClubIds.includes(initialClubId)) {
+      setSelectedClubFilter(initialClubId);
+      selectedClubRef.current = initialClubId;
+    }
+  }, [initialClubId, userClubIds]);
 
   useEffect(() => {
     if (userClubIds.length === 0) {
@@ -190,6 +214,7 @@ export default function GeneralCalendarScreen() {
             attendees: Array.isArray(data.attendees) ? data.attendees : []
           };
         })
+        // Only keep events that belong to one of the user's clubs
         .filter(event => !!event.clubId && userClubIds.includes(event.clubId));
 
       setEvents(list);
@@ -214,6 +239,7 @@ export default function GeneralCalendarScreen() {
   }, [showPhoneCalendarEvents, calendarPermissionGranted, visibleMonth]);
 
   const userClubOptions = useMemo(() => {
+    // Build dropdown options for only the user's clubs
     return userClubIds.map(clubId => ({
       id: clubId,
       name: clubNamesById[clubId] || "Unknown Club"
@@ -234,6 +260,7 @@ export default function GeneralCalendarScreen() {
 
     const role = String(membership?.position || "").trim().toLowerCase();
 
+    // Only presidents and board members can add events
     return role === "president" || role === "board member";
   }, [clubMemberships, selectedClubFilter]);
 
@@ -285,6 +312,7 @@ export default function GeneralCalendarScreen() {
   };
 
   const getClubEventDateText = (dateValue: any) => {
+    // Format the club event date for display
     const safeDate = getFirestoreDate(dateValue);
     if (!safeDate) return "";
     return safeDate.toLocaleDateString();
@@ -316,6 +344,7 @@ export default function GeneralCalendarScreen() {
   };
 
   const getPhoneEventDateText = (item: PhoneCalendarEvent) => {
+    // Format phone calendar event date for display
     return item.startDate.toLocaleDateString();
   };
 
@@ -362,6 +391,7 @@ export default function GeneralCalendarScreen() {
   };
 
   const isAttendingEvent = (item: ClubEvent) => {
+    // Check if the current user is already in the attendee list
     return !!item.attendees?.some(attendee => attendee.uid === currentUid);
   };
 
@@ -450,7 +480,14 @@ export default function GeneralCalendarScreen() {
       const calendars = await ExpoCalendar.getCalendarsAsync(
         ExpoCalendar.EntityTypes.EVENT
       );
-      const calendarIds = calendars.map(calendarItem => calendarItem.id);
+
+      // Only keep iPhone (iCloud) calendars
+      const iCloudCalendars = calendars.filter(cal =>
+        ["iCloud", "Default", "Calendar"].includes(cal.source?.name || "")
+      );
+
+      const calendarIds = iCloudCalendars.map(calendarItem => calendarItem.id);
+
 
       if (calendarIds.length === 0) {
         setPhoneCalendarEvents([]);
@@ -496,6 +533,7 @@ export default function GeneralCalendarScreen() {
             return false;
           }
 
+          // Only keep today and future events
           const normalizedStart = new Date(item.startDate);
           normalizedStart.setHours(0, 0, 0, 0);
 
@@ -552,6 +590,7 @@ export default function GeneralCalendarScreen() {
   today.setHours(0, 0, 0, 0);
 
   const upcomingClubFilteredEvents = clubFilteredEvents.filter(event => {
+    // Only keep today and future club events
     const eventDate = getClubEventBaseDate(event);
 
     if (!eventDate) return false;
@@ -568,6 +607,7 @@ export default function GeneralCalendarScreen() {
 
   const markedDates: any = {};
 
+  // Add blue dots for club events
   upcomingClubFilteredEvents.forEach(event => {
     const eventDate = getClubEventBaseDate(event);
     if (!eventDate) return;
@@ -584,6 +624,7 @@ export default function GeneralCalendarScreen() {
     });
   });
 
+  // Add gray dots for phone calendar events
   visiblePhoneEvents.forEach(event => {
     const dateStr = event.startDate.toISOString().split("T")[0];
 
@@ -620,6 +661,7 @@ export default function GeneralCalendarScreen() {
       sortDate: getClubEventSortDate(event),
       data: event
     })),
+
     ...filteredPhoneEvents.map(event => ({
       source: "phone" as const,
       sortDate: event.startDate,
@@ -654,11 +696,13 @@ export default function GeneralCalendarScreen() {
           markedDates={markedDates}
           enableSwipeMonths={true}
           onDayPress={day => {
+            // Tap once to filter by day, tap again to clear the selection
             setSelectedDate(prev =>
               prev === day.dateString ? "" : day.dateString
             );
           }}
           onMonthChange={month => {
+            // Update the visible month so phone events reload for that month
             setVisibleMonth(new Date(month.year, month.month - 1, 1));
           }}
         />
@@ -692,6 +736,7 @@ export default function GeneralCalendarScreen() {
                     style={styles.dropdownOption}
                     onPress={() => {
                       setSelectedClubFilter("all");
+                      selectedClubRef.current = "all";
                       setClubDropdownOpen(false);
                     }}
                   >
@@ -704,6 +749,7 @@ export default function GeneralCalendarScreen() {
                       style={styles.dropdownOption}
                       onPress={() => {
                         setSelectedClubFilter(club.id);
+                        selectedClubRef.current = club.id;
                         setClubDropdownOpen(false);
                       }}
                     >
@@ -721,8 +767,11 @@ export default function GeneralCalendarScreen() {
                   router.push({
                     pathname: "/add-event",
                     params: {
-                      clubId: selectedClubFilter,
-                      clubName: selectedClubName
+                      clubId: selectedClubRef.current,
+                      clubName:
+                        selectedClubRef.current === "all"
+                          ? "All Clubs"
+                          : clubNamesById[selectedClubRef.current] || "Club"
                     }
                   })
                 }

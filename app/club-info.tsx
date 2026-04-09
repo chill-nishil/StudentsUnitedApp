@@ -1,7 +1,7 @@
 import { db } from "@/FirebaseConfig";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
@@ -44,7 +44,8 @@ export default function ClubInfoScreen() {
 
   const [aboutInput, setAboutInput] = useState("");
   const [rulesInput, setRulesInput] = useState("");
-  const [isSavingInfo, setIsSavingInfo] = useState(false);
+  const [isSavingAbout, setIsSavingAbout] = useState(false);
+  const [isSavingRules, setIsSavingRules] = useState(false);
 
   const [isPickingBackground, setIsPickingBackground] = useState(false);
 
@@ -67,6 +68,8 @@ export default function ClubInfoScreen() {
       if (!snap.exists()) return;
 
       const clubData = snap.data();
+
+      // Clean the badge list so only non-empty strings are kept
       const nextBadges = Array.isArray(clubData.focusBadges)
         ? clubData.focusBadges.filter((badge: any) => typeof badge === "string" && badge.trim())
         : [];
@@ -75,6 +78,8 @@ export default function ClubInfoScreen() {
       setSelectedBadges(nextBadges);
       setAboutInput(typeof clubData.about === "string" ? clubData.about : "");
       setRulesInput(typeof clubData.rules === "string" ? clubData.rules : "");
+
+      // Only the president is allowed to edit club info
       setIsPresident(!!currentUid && clubData.presidentId === currentUid);
     });
 
@@ -95,8 +100,10 @@ export default function ClubInfoScreen() {
   }
 
   function toggleBadge(badge: string) {
+    // Block badge editing for non-presidents
     if (!isPresident) return;
 
+    // Add badge if missing, remove it if already selected
     setSelectedBadges(prev => {
       if (prev.some(item => item.toLowerCase() === badge.toLowerCase())) {
         return prev.filter(item => item.toLowerCase() !== badge.toLowerCase());
@@ -123,6 +130,7 @@ export default function ClubInfoScreen() {
   }
 
   async function saveBadges() {
+    // Only presidents can save badges, and club id must exist
     if (!clubId || !isPresident) {
       if (!isPresident) {
         Alert.alert("Only the president can edit club focus.");
@@ -134,6 +142,7 @@ export default function ClubInfoScreen() {
       setIsSavingBadges(true);
 
       const clubRef = doc(db, "clubs", clubId);
+
       await updateDoc(clubRef, {
         focusBadges: sortedSelectedBadges
       });
@@ -142,7 +151,8 @@ export default function ClubInfoScreen() {
     }
   }
 
-  async function saveClubInfo() {
+  async function saveAboutInfo() {
+    // Only presidents can save About, and club id must exist
     if (!clubId || !isPresident) {
       if (!isPresident) {
         Alert.alert("Only the president can edit club info.");
@@ -151,19 +161,42 @@ export default function ClubInfoScreen() {
     }
 
     try {
-      setIsSavingInfo(true);
+      setIsSavingAbout(true);
 
       const clubRef = doc(db, "clubs", clubId);
+
       await updateDoc(clubRef, {
-        about: aboutInput.trim(),
+        about: aboutInput.trim()
+      });
+    } finally {
+      setIsSavingAbout(false);
+    }
+  }
+
+  async function saveRulesInfo() {
+    // Only presidents can save Rules, and club id must exist
+    if (!clubId || !isPresident) {
+      if (!isPresident) {
+        Alert.alert("Only the president can edit club info.");
+      }
+      return;
+    }
+
+    try {
+      setIsSavingRules(true);
+
+      const clubRef = doc(db, "clubs", clubId);
+
+      await updateDoc(clubRef, {
         rules: rulesInput.trim()
       });
     } finally {
-      setIsSavingInfo(false);
+      setIsSavingRules(false);
     }
   }
 
   async function pickChatBackground() {
+    // Only presidents can change the shared club chat background
     if (!isPresident) return;
     if (!clubId) return;
     if (isPickingBackground) return;
@@ -186,6 +219,7 @@ export default function ClubInfoScreen() {
       const asset = result.assets?.[0];
       if (!asset?.uri) return;
 
+      // Resize and compress the image before saving it as base64
       const manipulated = await manipulateAsync(
         asset.uri,
         [{ resize: { width: 1200 } }],
@@ -202,12 +236,15 @@ export default function ClubInfoScreen() {
 
       const clubRef = doc(db, "clubs", clubId);
       await updateDoc(clubRef, { chatBackgroundBase64: base64 });
+      Alert.alert("Success", "Chat wallpaper updated!");
+
     } finally {
       setIsPickingBackground(false);
     }
   }
 
   async function clearChatBackground() {
+    // Only presidents can remove the shared chat background
     if (!isPresident) return;
     if (!clubId) return;
 
@@ -240,8 +277,9 @@ export default function ClubInfoScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.headerTopRow}>
         <View style={styles.headerSide}>
-          <Pressable
+          {/* <Pressable
             onPress={() =>
+              // Opens the club calendar and passes the club id and name
               router.push({
                 pathname: "/calendar",
                 params: {
@@ -256,7 +294,7 @@ export default function ClubInfoScreen() {
               style={styles.headerIcon}
               resizeMode="contain"
             />
-          </Pressable>
+          </Pressable> */}
         </View>
 
         <View style={styles.headerCenterWrap}>
@@ -275,25 +313,6 @@ export default function ClubInfoScreen() {
           style={styles.image}
         />
       )}
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About</Text>
-        {isPresident ? (
-          <TextInput
-            value={aboutInput}
-            onChangeText={setAboutInput}
-            placeholder="Write about your club"
-            placeholderTextColor="#6B7280"
-            style={[styles.customBadgeInput, styles.multilineInput]}
-            multiline
-            textAlignVertical="top"
-          />
-        ) : (
-          <Text style={styles.sectionText}>
-            {club.about || "No description yet."}
-          </Text>
-        )}
-      </View>
 
       {isPresident && (
         <View style={styles.backgroundButtonsRow}>
@@ -319,6 +338,37 @@ export default function ClubInfoScreen() {
       )}
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>About</Text>
+        {isPresident ? (
+          <TextInput
+            value={aboutInput}
+            onChangeText={setAboutInput}
+            placeholder="Write about your club"
+            placeholderTextColor="#6B7280"
+            style={[styles.customBadgeInput, styles.multilineInput]}
+            multiline
+            textAlignVertical="top"
+          />
+        ) : (
+          <Text style={styles.sectionText}>
+            {club.about || "No description yet."}
+          </Text>
+        )}
+
+        {isPresident && (
+          <Pressable
+            style={styles.saveButton}
+            onPress={saveAboutInfo}
+            disabled={isSavingAbout}
+          >
+            <Text style={styles.saveButtonText}>
+              {isSavingAbout ? "Saving..." : "Save About"}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Rules</Text>
         {isPresident ? (
           <TextInput
@@ -339,11 +389,11 @@ export default function ClubInfoScreen() {
         {isPresident && (
           <Pressable
             style={styles.saveButton}
-            onPress={saveClubInfo}
-            disabled={isSavingInfo}
+            onPress={saveRulesInfo}
+            disabled={isSavingRules}
           >
             <Text style={styles.saveButtonText}>
-              {isSavingInfo ? "Saving..." : "Save Info"}
+              {isSavingRules ? "Saving..." : "Save Info"}
             </Text>
           </Pressable>
         )}
@@ -354,6 +404,7 @@ export default function ClubInfoScreen() {
 
         <View style={styles.badgesWrap}>
           {BADGE_OPTIONS.map(badge => {
+            // Check whether this badge is currently selected
             const isSelected = selectedBadges.some(
               item => item.toLowerCase() === badge.toLowerCase()
             );
@@ -636,8 +687,3 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   }
 });
-
-
-
-
-

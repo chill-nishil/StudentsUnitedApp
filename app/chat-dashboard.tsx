@@ -33,8 +33,10 @@ type ChatRoomItem = {
   lastMessageTime: any;
 };
 
+// check time of gc messages to display on club rows
 function formatChatTime(value: any): string {
   try {
+    // Convert Firestore timestamp or Date into a usable Date object
     const d =
       value && typeof value?.toDate === "function"
         ? value.toDate()
@@ -84,16 +86,15 @@ export default function ChatRoomsScreen() {
   const [currentUid, setCurrentUid] = useState<string | null>(null);
   const [rooms, setRooms] = useState<ChatRoomItem[]>([]);
   const [loading, setLoading] = useState(true);
-
   const [lastReadByClub, setLastReadByClub] = useState<Record<string, any>>({});
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [pinnedClubIds, setPinnedClubIds] = useState<string[]>([]);
-
   const [showCreateClubModal, setShowCreateClubModal] = useState(false);
   const [newClubName, setNewClubName] = useState("");
   const [creatingClub, setCreatingClub] = useState(false);
 
-  useEffect(() => {
+  useEffect(() => { 
+    // If user is missing or there are no rooms yet, clear unread counts
     if (!currentUid || rooms.length === 0) {
       setUnreadCounts({});
       return;
@@ -106,6 +107,7 @@ export default function ChatRoomsScreen() {
 
       let chatsQuery;
 
+      // If the user has read this room before, only listen for newer messages
       if (lastReadTime) {
         chatsQuery = query(
           collection(db, "chats"),
@@ -125,6 +127,7 @@ export default function ChatRoomsScreen() {
         snap.docs.forEach(d => {
           const data = d.data();
 
+          // Only count messages from other people as unread
           if (data.senderUid !== currentUid) {
             count += 1;
           }
@@ -161,6 +164,7 @@ export default function ChatRoomsScreen() {
   }, [currentUid]);
 
   useEffect(() => {
+    // Watch Firebase auth so the screen always knows the current user
     const unsub = onAuthStateChanged(auth, user => {
       setCurrentUid(user ? user.uid : null);
     });
@@ -169,6 +173,7 @@ export default function ChatRoomsScreen() {
   }, []);
 
   useEffect(() => {
+    // Do not query clubs until a user is logged in
     if (!currentUid) return;
 
     const q = query(
@@ -189,6 +194,7 @@ export default function ChatRoomsScreen() {
         };
       });
 
+      // Keep pinned chats at the top, then sort the rest by most recent activity
       list.sort((a, b) => {
         const aIsPinned = pinnedClubIds.includes(a.id);
         const bIsPinned = pinnedClubIds.includes(b.id);
@@ -227,6 +233,7 @@ export default function ChatRoomsScreen() {
   }
 
   function renderPreview(item: ChatRoomItem) {
+    // Show fallback text when the room has no messages yet
     if (!item.lastMessage) return "No messages yet";
     if (!item.lastMessageSender) return item.lastMessage;
     return `${item.lastMessageSender}: ${item.lastMessage}`;
@@ -245,6 +252,7 @@ export default function ChatRoomsScreen() {
     try {
       setCreatingClub(true);
 
+      // Check whether another club already uses this exact name
       const existingClubQuery = query(
         collection(db, "clubs"),
         where("name", "==", normalizedName)
@@ -261,6 +269,7 @@ export default function ChatRoomsScreen() {
       let clubCode = "";
       let codeExists = true;
 
+      // Keep generating codes until one is unique
       while (codeExists) {
         clubCode = generateClubCode();
 
@@ -314,6 +323,7 @@ export default function ChatRoomsScreen() {
       return;
     }
 
+    // If the user has fewer than 3 pinned chats, add this one directly
     if (pinnedClubIds.length < 3) {
       await updateDoc(userRef, {
         pinnedClubIds: [...pinnedClubIds, room.id]
@@ -321,6 +331,7 @@ export default function ChatRoomsScreen() {
       return;
     }
 
+    // If 3 chats are already pinned, let the user choose one to replace
     const pinnedRooms = pinnedClubIds
       .map(id => rooms.find(roomItem => roomItem.id === id))
       .filter(Boolean) as ChatRoomItem[];
@@ -354,6 +365,7 @@ export default function ChatRoomsScreen() {
     const userRef = doc(db, "users", currentUid);
     const updatedPinned = pinnedClubIds.filter(id => id !== room.id);
 
+    // Remove this room from the pinned list
     await updateDoc(userRef, {
       pinnedClubIds: updatedPinned
     });
@@ -362,6 +374,7 @@ export default function ChatRoomsScreen() {
   function handleRoomLongPress(room: ChatRoomItem) {
     const isPinned = pinnedClubIds.includes(room.id);
 
+    // Long press opens either pin or unpin options depending on current state
     Alert.alert(
       room.name,
       isPinned ? "This chat is pinned." : "Pin this chat to keep it at the top.",
@@ -424,7 +437,7 @@ export default function ChatRoomsScreen() {
                         {item.name}
                       </Text>
 
-                      {pinnedClubIds.includes(item.id) && (
+                      {isPinned && (
                         <Text style={styles.pinIcon}>📌</Text>
                       )}
                     </View>
@@ -475,6 +488,7 @@ export default function ChatRoomsScreen() {
         transparent
         animationType="fade"
         onRequestClose={() => {
+          // Only allow closing while a club is not actively being created
           if (!creatingClub) {
             setShowCreateClubModal(false);
           }
@@ -504,6 +518,7 @@ export default function ChatRoomsScreen() {
               <Pressable
                 style={styles.modalCancelButton}
                 onPress={() => {
+                  // Reset and close modal if creation is not in progress
                   if (!creatingClub) {
                     setShowCreateClubModal(false);
                     setNewClubName("");

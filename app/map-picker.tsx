@@ -39,6 +39,7 @@ export default function MapPickerScreen() {
   const [locationName, setLocationName] = useState(initialName);
   const [locationAddress, setLocationAddress] = useState(initialAddress);
   const [searchText, setSearchText] = useState(initialAddress || initialName);
+
   const [placeSelected, setPlaceSelected] = useState(false);
 
   const [pickedLat, setPickedLat] = useState<number | null>(
@@ -72,12 +73,14 @@ export default function MapPickerScreen() {
   useEffect(() => {
     const loadUserLocation = async () => {
       try {
+        // Ask for location permission
         const permission = await Location.requestForegroundPermissionsAsync();
 
         if (permission.status !== "granted") {
           return;
         }
 
+        // Get the user's current coordinates
         const current = await Location.getCurrentPositionAsync({});
         const coords = {
           latitude: current.coords.latitude,
@@ -104,6 +107,7 @@ export default function MapPickerScreen() {
   }, [pickedLat, pickedLng]);
 
   useEffect(() => {
+    // Do not keep searching after the user already picked a suggestion
     if (placeSelected) return;
 
     const trimmed = searchText.trim();
@@ -113,6 +117,7 @@ export default function MapPickerScreen() {
       return;
     }
 
+    // Small delay so it does not call the API on every single keystroke
     const timeout = setTimeout(() => {
       fetchAutocomplete(trimmed);
     }, 300);
@@ -133,12 +138,14 @@ export default function MapPickerScreen() {
     try {
       setLoadingSuggestions(true);
 
+      // Build request body for Google Places autocomplete
       const body: any = {
         input,
         includeQueryPredictions: false,
         includedRegionCodes: ["us"]
       };
 
+      // Bias results toward the user's area if their location is known
       if (userCoords) {
         body.locationBias = {
           circle: {
@@ -171,6 +178,7 @@ export default function MapPickerScreen() {
         return;
       }
 
+      // Convert API results into the suggestion shape used by the UI
       const nextSuggestions: Suggestion[] = (data.suggestions || [])
         .map((item: any) => {
           const prediction = item.placePrediction;
@@ -236,6 +244,7 @@ export default function MapPickerScreen() {
         return;
       }
 
+      // Build the display name and address from the returned place data
       const placeName =
         data.displayName?.text ||
         suggestion.mainText ||
@@ -255,7 +264,6 @@ export default function MapPickerScreen() {
       setSearchText(addressOnly || placeName);
       setSuggestions([]);
       setShowSuggestions(false);
-
       setPlaceSelected(true);
       setSuggestions([]);
       setShowSuggestions(false);
@@ -283,6 +291,7 @@ export default function MapPickerScreen() {
     }
 
     try {
+      // Convert tapped map coordinates into a readable address
       const response = await fetch(
         `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=${GOOGLE_API_KEY}`
       );
@@ -303,6 +312,7 @@ export default function MapPickerScreen() {
   const handleMapPress = async (event: MapPressEvent) => {
     const { latitude, longitude } = event.nativeEvent.coordinate;
 
+    // Save the coordinates from the point the user tapped
     setPickedLat(latitude);
     setPickedLng(longitude);
     setShowSuggestions(false);
@@ -325,9 +335,14 @@ export default function MapPickerScreen() {
       return;
     }
 
+    // Send the chosen location back to the add-event screen
     router.dismissTo({
       pathname: "/add-event",
       params: {
+        clubId:
+          typeof params.clubId === "string" ? params.clubId : undefined,
+        clubName:
+          typeof params.clubName === "string" ? params.clubName : undefined,
         locationName: locationName.trim() || "Pinned location",
         locationAddress:
           locationAddress.trim() || locationName.trim() || "Pinned location",
@@ -339,111 +354,99 @@ export default function MapPickerScreen() {
 
   return (
     <ScrollView
-    style={{ flex: 1 }}
-    contentContainerStyle={{ paddingBottom: 30 }}
-    keyboardShouldPersistTaps="handled"
-  >
-    <View style={styles.container}>
-      <Text style={styles.header}>Pick Event Location</Text>
+      style={{ flex: 1 }}
+      contentContainerStyle={{ paddingBottom: 30 }}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={styles.container}>
+        <Text style={styles.header}>Pick Event Location</Text>
 
-      <View style={styles.searchWrap}>
-        <TextInput
-          placeholder="Search a place or address"
-          placeholderTextColor="#6B7280"
-          value={searchText}
-          onChangeText={text => {
-            setSearchText(text);
-            setPlaceSelected(false);
-            setShowSuggestions(true);
-          }}
-          style={styles.input}
-        />
+        <View style={styles.searchWrap}>
+          <TextInput
+            placeholder="Search a place or address"
+            placeholderTextColor="#6B7280"
+            value={searchText}
+            onChangeText={text => {
+              // Update the search text and reopen suggestions while typing
+              setSearchText(text);
+              setPlaceSelected(false);
+              setShowSuggestions(true);
+            }}
+            style={styles.input}
+          />
 
-        {(loadingSuggestions || loadingPlace) && (
-          <ActivityIndicator style={styles.loader} size="small" color="#2563EB" />
-        )}
+          {(loadingSuggestions || loadingPlace) && (
+            <ActivityIndicator style={styles.loader} size="small" color="#2563EB" />
+          )}
 
-        {showSuggestions && suggestions.length > 0 && searchText.trim().length >= 2 && (
-          <View style={styles.suggestionsBox}>
-            {suggestions.map(item => (
-              <Pressable
-                key={item.placeId}
-                style={styles.suggestionItem}
-                onPress={() => fetchPlaceDetails(item)}
-              >
-                <Text style={styles.suggestionMain}>{item.mainText}</Text>
-                {!!item.secondaryText && (
-                  <Text style={styles.suggestionSecondary}>
-                    {item.secondaryText}
-                  </Text>
-                )}
-              </Pressable>
-            ))}
+          {showSuggestions && suggestions.length > 0 && searchText.trim().length >= 2 && (
+            <View style={styles.suggestionsBox}>
+              {suggestions.map(item => (
+                <Pressable
+                  key={item.placeId}
+                  style={styles.suggestionItem}
+                  onPress={() => fetchPlaceDetails(item)}
+                >
+                  <Text style={styles.suggestionMain}>{item.mainText}</Text>
+                  {!!item.secondaryText && (
+                    <Text style={styles.suggestionSecondary}>
+                      {item.secondaryText}
+                    </Text>
+                  )}
+                </Pressable>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.nameBox}>
+          <Text style={styles.nameLabel}>Calendar name</Text>
+          <TextInput
+            placeholder="Ex. Taco Bell"
+            placeholderTextColor="#6B7280"
+            value={locationName}
+            onChangeText={setLocationName}
+            style={styles.nameInput}
+          />
+        </View>
+
+        {!!locationAddress && (
+          <View style={styles.addressBox}>
+            <Text style={styles.addressLabel}>Selected address</Text>
+            <Text style={styles.addressText}>{locationAddress}</Text>
           </View>
         )}
-      </View>
 
-      <View style={styles.nameBox}>
-        <Text style={styles.nameLabel}>Calendar name</Text>
-        <TextInput
-          placeholder="Ex. Taco Bell"
-          placeholderTextColor="#6B7280"
-          value={locationName}
-          onChangeText={setLocationName}
-          style={styles.nameInput}
-        />
-      </View>
-
-      {!!locationAddress && (
-        <View style={styles.addressBox}>
-          <Text style={styles.addressLabel}>Selected address</Text>
-          <Text style={styles.addressText}>{locationAddress}</Text>
-        </View>
-      )}
-
-      <Text style={styles.helper}>
-        Search above or tap anywhere on the map to place your pin.
-      </Text>
-
-      <MapView
-        ref={ref => {
-          mapRef.current = ref;
-        }}
-        style={styles.map}
-        initialRegion={region}
-        onPress={handleMapPress}
-        onRegionChangeComplete={setRegion}
-        showsUserLocation={true}
-        showsMyLocationButton={true}
-      >
-        {markerCoords && <Marker coordinate={markerCoords} />}
-
-        {/* {userCoords && (
-          <Marker
-            coordinate={userCoords}
-            title="Your Location"
-            pinColor="blue"
-          />
-        )} */}
-      </MapView>
-
-      {/* {markerCoords && (
-        <Text style={styles.coords}>
-          {markerCoords.latitude.toFixed(5)}, {markerCoords.longitude.toFixed(5)}
+        <Text style={styles.helper}>
+          Search above or tap anywhere on the map to place your pin.
         </Text>
-      )} */}
 
-      <View style={styles.buttonRow}>
-        <Pressable style={styles.cancelButton} onPress={() => router.back()}>
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </Pressable>
+        <MapView
+          ref={ref => {
+            // Store the map ref so the code can animate the map later
+            mapRef.current = ref;
+          }}
+          style={styles.map}
+          initialRegion={region}
+          onPress={handleMapPress}
+          onRegionChangeComplete={setRegion}
+          showsUserLocation={true}
+          showsMyLocationButton={true}
+        >
+          {markerCoords && <Marker coordinate={markerCoords} />}
+        </MapView>
 
-        <Pressable style={styles.confirmButton} onPress={handleConfirm}>
-          <Text style={styles.confirmButtonText}>Use This Location</Text>
-        </Pressable>
+        <View style={styles.buttonRow}>
+          <Pressable style={styles.cancelButton} onPress={() => router.back()}>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </Pressable>
+
+          <Pressable style={styles.confirmButton} onPress={handleConfirm}>
+            <Text style={styles.confirmButtonText}>Use This Location</Text>
+          </Pressable>
+        </View>
       </View>
-    </View>
-  </ScrollView>
+    </ScrollView>
   );
 }
 
@@ -544,11 +547,11 @@ const styles = StyleSheet.create({
     marginBottom: 10
   },
   map: {
-  height: 420,
-  borderRadius: 12,
-  overflow: "hidden",
-  marginBottom: 10
-},
+    height: 420,
+    borderRadius: 12,
+    overflow: "hidden",
+    marginBottom: 10
+  },
   coords: {
     marginTop: 10,
     color: "#374151",

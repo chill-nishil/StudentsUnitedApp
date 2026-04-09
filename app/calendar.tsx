@@ -53,7 +53,6 @@ export default function CalendarScreen() {
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedDate, setSelectedDate] = useState("");
   const [calendarMonth, setCalendarMonth] = useState(new Date());
-
   const [currentUid, setCurrentUid] = useState("");
   const [currentUserName, setCurrentUserName] = useState("");
   const [currentUserPosition, setCurrentUserPosition] = useState("");
@@ -72,6 +71,7 @@ export default function CalendarScreen() {
         unsubEvents = null;
       }
 
+      // making sure there are valid user/club ids
       if (!user) {
         setCurrentUid("");
         setCurrentUserName("");
@@ -133,6 +133,7 @@ export default function CalendarScreen() {
       );
 
       unsubEvents = onSnapshot(q, snapshot => {
+        // Convert Firestore docs into event objects used by the screen
         const list: Event[] = snapshot.docs.map(docItem => {
           const data = docItem.data();
 
@@ -178,6 +179,7 @@ export default function CalendarScreen() {
   }, [calendarMonth]);
 
   const canAddEvent = useMemo(() => {
+    // Only presidents and board members can add events
     const normalizedPosition = currentUserPosition.trim().toLowerCase();
     return (
       normalizedPosition === "president" ||
@@ -206,6 +208,7 @@ export default function CalendarScreen() {
   };
 
   const getEventDateText = (dateValue: any) => {
+    // Converts Firestore date into a readable calendar date
     if (!dateValue?.toDate) return "";
     return dateValue.toDate().toLocaleDateString();
   };
@@ -240,6 +243,7 @@ export default function CalendarScreen() {
     try {
       const safeAddress = getSafeAddressText(item.locationAddress);
 
+      // Do not try opening maps if there is no address
       if (!safeAddress) {
         Alert.alert("No address", "This event does not have an address yet.");
         return;
@@ -263,6 +267,7 @@ export default function CalendarScreen() {
   };
 
   const isAttendingEvent = (item: Event) => {
+    // Checks whether the current user is already on the attendee list
     return !!item.attendees?.some(attendee => attendee.uid === currentUid);
   };
 
@@ -282,6 +287,7 @@ export default function CalendarScreen() {
       const attendeeObject = getCurrentAttendeeObject();
       const alreadyAttending = isAttendingEvent(item);
 
+      // Remove the user if already signed up, otherwise add them
       if (alreadyAttending) {
         await updateDoc(eventRef, {
           attendees: arrayRemove(attendeeObject)
@@ -303,6 +309,7 @@ export default function CalendarScreen() {
 
   const markedDates: any = {};
 
+  // Mark every event date with a dot on the calendar
   events.forEach(event => {
     const dateStr = event.date?.toDate?.().toISOString().split("T")[0];
 
@@ -314,6 +321,7 @@ export default function CalendarScreen() {
     };
   });
 
+  // Show only events for the selected date, or all events if no date is selected
   const filteredEvents = selectedDate
     ? events.filter(event => {
         const dateStr = event.date?.toDate?.().toISOString().split("T")[0];
@@ -336,6 +344,7 @@ export default function CalendarScreen() {
       <Calendar
         markedDates={markedDates}
         onDayPress={day => {
+          // Tap once to filter by date, tap again to clear the filter
           setSelectedDate(prev =>
             prev === day.dateString ? "" : day.dateString
           );

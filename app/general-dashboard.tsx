@@ -15,6 +15,7 @@ import {
   FlatList,
   Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View
@@ -104,10 +105,18 @@ export default function GeneralDashboard() {
 
   // display 3 upcoming events
   const upcomingEvents = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     return events
       .filter(e => e.date?.toDate)
-      .sort((a, b) => a.date.toDate() - b.date.toDate())
-      .slice(0, 3);
+      .filter(e => {
+        const eventDate = e.date.toDate();
+        const normalizedEventDate = new Date(eventDate);
+        normalizedEventDate.setHours(0, 0, 0, 0);
+        return normalizedEventDate.getTime() >= today.getTime();
+      })
+      .sort((a, b) => a.date.toDate() - b.date.toDate());
   }, [events]);
 
   return (
@@ -127,22 +136,40 @@ export default function GeneralDashboard() {
       {upcomingEvents.length === 0 ? (
         <Text style={styles.emptyText}>No upcoming events</Text>
       ) : (
-        upcomingEvents.map(event => {
-          const clubName =
-            clubs.find(c => c.id === event.clubId)?.name || "Club";
+        <View style={styles.eventsScrollBox}>
+          <ScrollView
+            showsVerticalScrollIndicator={true}
+            nestedScrollEnabled={true}
+          >
+            {upcomingEvents.map(event => {
+              const clubName =
+                clubs.find(c => c.id === event.clubId)?.name || "Club";
 
-          return (
-            <View key={event.id} style={styles.eventCard}>
-              <Text style={styles.eventClub}>{clubName}</Text>
-              <Text style={styles.eventTitle}>{event.title}</Text>
-              <Text style={styles.eventDate}>
-                {event.date?.toDate?.().toLocaleDateString()}
-              </Text>
-            </View>
-          );
-        })
+              return (
+                <Pressable
+                  key={event.id}
+                  style={styles.eventCard}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/general-calendar",
+                      params: {
+                        clubId: event.clubId,
+                        clubName: clubName
+                      }
+                    })
+                  }
+                >
+                  <Text style={styles.eventClub}>{clubName}</Text>
+                  <Text style={styles.eventTitle}>{event.title}</Text>
+                  <Text style={styles.eventDate}>
+                    {event.date?.toDate?.().toLocaleDateString()}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
       )}
-
 
       <Text style={styles.sectionTitle}>My Chat Rooms</Text>
 
@@ -208,6 +235,11 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 11,
     color: "#6B7280",
+    marginBottom: 8
+  },
+
+  eventsScrollBox: {
+    maxHeight: 240,
     marginBottom: 8
   },
 
