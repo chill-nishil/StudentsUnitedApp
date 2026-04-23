@@ -7,6 +7,7 @@ import {
   arrayRemove,
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   onSnapshot,
@@ -104,6 +105,7 @@ export default function GeneralCalendarScreen() {
   const [isLoadingPhoneEvents, setIsLoadingPhoneEvents] = useState(false);
 
   const [expandedEventIds, setExpandedEventIds] = useState<string[]>([]);
+  const [deletingEventIds, setDeletingEventIds] = useState<string[]>([]);
 
   useEffect(() => {
     const auth = getAuth();
@@ -224,6 +226,9 @@ export default function GeneralCalendarScreen() {
         const updatedEvent = list.find(event => event.id === attendanceEvent.id);
         if (updatedEvent) {
           setAttendanceEvent(updatedEvent);
+        } else {
+          setAttendanceEvent(null);
+          setAttendanceModalVisible(false);
         }
       }
     });
@@ -362,6 +367,85 @@ export default function GeneralCalendarScreen() {
 
     return `${startText} - ${endText}`;
   };
+
+  const getClubEventDeleteCutoff = (item: ClubEvent): Date | null => {
+    if (item.eventType === "time") {
+      return getFirestoreDate(item.endDate) || getFirestoreDate(item.startDate) || getFirestoreDate(item.date);
+    }
+
+    const baseDate = getFirestoreDate(item.date);
+    if (!baseDate) return null;
+
+    const cutoff = new Date(baseDate);
+    cutoff.setHours(23, 59, 59, 999);
+    return cutoff;
+  };
+
+  const isPresidentForClub = (clubId?: string) => {
+    if (!clubId) return false;
+
+    const membership = clubMemberships.find(
+      membershipItem => membershipItem?.clubId === clubId
+    );
+
+    const role = String(membership?.position || "").trim().toLowerCase();
+    return role === "president";
+  };
+
+  const deleteClubEvent = async (eventId: string) => {
+    try {
+      if (deletingEventIds.includes(eventId)) return;
+
+      setDeletingEventIds(prev => [...prev, eventId]);
+
+      await deleteDoc(doc(db, "events", eventId));
+
+      setExpandedEventIds(prev => prev.filter(id => id !== `club-${eventId}`));
+
+      if (attendanceEvent?.id === eventId) {
+        setAttendanceEvent(null);
+        setAttendanceModalVisible(false);
+      }
+    } catch {
+      Alert.alert("Error", "Could not delete this event.");
+    } finally {
+      setDeletingEventIds(prev => prev.filter(id => id !== eventId));
+    }
+  };
+
+  const confirmDeleteClubEvent = (item: ClubEvent) => {
+    if (!isPresidentForClub(item.clubId)) return;
+
+    Alert.alert(
+      "Delete event?",
+      "This will remove the event for everyone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deleteClubEvent(item.id)
+        }
+      ]
+    );
+  };
+
+  useEffect(() => {
+    if (events.length === 0) return;
+
+    const now = new Date();
+
+    events.forEach(event => {
+      if (!isPresidentForClub(event.clubId)) return;
+
+      const cutoff = getClubEventDeleteCutoff(event);
+      if (!cutoff) return;
+
+      if (cutoff.getTime() < now.getTime()) {
+        deleteClubEvent(event.id);
+      }
+    });
+  }, [events, clubMemberships]);
 
   const openInMaps = async (safeAddress: string) => {
     try {
@@ -815,9 +899,19 @@ export default function GeneralCalendarScreen() {
                 const clubName = clubEvent.clubId
                   ? clubNamesById[clubEvent.clubId] || "Club"
                   : "Club";
+                const canDeleteThisEvent = isPresidentForClub(clubEvent.clubId);
 
                 return (
-                  <View key={eventKey} style={styles.eventCard}>
+                  <Pressable
+                    key={eventKey}
+                    style={styles.eventCard}
+                    onLongPress={() => {
+                      if (canDeleteThisEvent) {
+                        confirmDeleteClubEvent(clubEvent);
+                      }
+                    }}
+                    delayLongPress={300}
+                  >
                     <Pressable
                       style={styles.cardHeaderButton}
                       onPress={() => toggleExpandedEvent(eventKey)}
@@ -890,9 +984,15 @@ export default function GeneralCalendarScreen() {
                             View attendance list
                           </Text>
                         </Pressable>
+
+                        {canDeleteThisEvent && (
+                          <Text style={styles.deleteHint}>
+                            Hold down to delete
+                          </Text>
+                        )}
                       </>
                     )}
-                  </View>
+                  </Pressable>
                 );
               }
 
@@ -918,9 +1018,11 @@ export default function GeneralCalendarScreen() {
                       </View>
                     </View>
 
-                    <Text style={styles.collapseArrow}>
-                      {isExpanded ? "▲" : "▼"}
-                    </Text>
+                    <View style={styles.collapseArrowWrap}>
+                      <Text style={styles.collapseArrow}>
+                        {isExpanded ? "▲" : "▼"}
+                      </Text>
+                    </View>
                   </Pressable>
 
                   {isExpanded && (
@@ -1135,18 +1237,17 @@ const styles = StyleSheet.create({
     paddingRight: 12
   },
   collapseArrowWrap: {
-  width: 32,
-  height: 32,
-  alignItems: "center",
-  justifyContent: "center",
-  marginTop: 2
-},
-
-collapseArrow: {
-  color: "#6B7280",
-  fontSize: 16,
-  fontWeight: "700"
-},
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2
+  },
+  collapseArrow: {
+    color: "#6B7280",
+    fontSize: 16,
+    fontWeight: "700"
+  },
   clubLabel: {
     color: "#7b97d4",
     fontWeight: "700",
@@ -1229,6 +1330,12 @@ collapseArrow: {
     color: "#1D4ED8",
     textDecorationLine: "underline",
     fontWeight: "500"
+  },
+  deleteHint: {
+    marginTop: 10,
+    fontSize: 12,
+    color: "#DC2626",
+    fontWeight: "600"
   },
   emptyWrap: {
     backgroundColor: "white",
