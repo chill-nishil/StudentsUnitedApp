@@ -1,7 +1,7 @@
 import { db } from "@/FirebaseConfig";
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
@@ -15,6 +15,7 @@ import {
   TextInput,
   View
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const BADGE_OPTIONS = [
   "Nature",
@@ -48,6 +49,7 @@ export default function ClubInfoScreen() {
   const [isSavingRules, setIsSavingRules] = useState(false);
 
   const [isPickingBackground, setIsPickingBackground] = useState(false);
+  const [isPickingGroupIcon, setIsPickingGroupIcon] = useState(false);
 
   useEffect(() => {
     const auth = getAuth();
@@ -69,7 +71,6 @@ export default function ClubInfoScreen() {
 
       const clubData = snap.data();
 
-      // Clean the badge list so only non-empty strings are kept
       const nextBadges = Array.isArray(clubData.focusBadges)
         ? clubData.focusBadges.filter((badge: any) => typeof badge === "string" && badge.trim())
         : [];
@@ -79,7 +80,6 @@ export default function ClubInfoScreen() {
       setAboutInput(typeof clubData.about === "string" ? clubData.about : "");
       setRulesInput(typeof clubData.rules === "string" ? clubData.rules : "");
 
-      // Only the president is allowed to edit club info
       setIsPresident(!!currentUid && clubData.presidentId === currentUid);
     });
 
@@ -100,10 +100,8 @@ export default function ClubInfoScreen() {
   }
 
   function toggleBadge(badge: string) {
-    // Block badge editing for non-presidents
     if (!isPresident) return;
 
-    // Add badge if missing, remove it if already selected
     setSelectedBadges(prev => {
       if (prev.some(item => item.toLowerCase() === badge.toLowerCase())) {
         return prev.filter(item => item.toLowerCase() !== badge.toLowerCase());
@@ -130,7 +128,6 @@ export default function ClubInfoScreen() {
   }
 
   async function saveBadges() {
-    // Only presidents can save badges, and club id must exist
     if (!clubId || !isPresident) {
       if (!isPresident) {
         Alert.alert("Only the president can edit club focus.");
@@ -152,7 +149,6 @@ export default function ClubInfoScreen() {
   }
 
   async function saveAboutInfo() {
-    // Only presidents can save About, and club id must exist
     if (!clubId || !isPresident) {
       if (!isPresident) {
         Alert.alert("Only the president can edit club info.");
@@ -174,7 +170,6 @@ export default function ClubInfoScreen() {
   }
 
   async function saveRulesInfo() {
-    // Only presidents can save Rules, and club id must exist
     if (!clubId || !isPresident) {
       if (!isPresident) {
         Alert.alert("Only the president can edit club info.");
@@ -196,7 +191,6 @@ export default function ClubInfoScreen() {
   }
 
   async function pickChatBackground() {
-    // Only presidents can change the shared club chat background
     if (!isPresident) return;
     if (!clubId) return;
     if (isPickingBackground) return;
@@ -219,7 +213,6 @@ export default function ClubInfoScreen() {
       const asset = result.assets?.[0];
       if (!asset?.uri) return;
 
-      // Resize and compress the image before saving it as base64
       const manipulated = await manipulateAsync(
         asset.uri,
         [{ resize: { width: 1200 } }],
@@ -237,14 +230,12 @@ export default function ClubInfoScreen() {
       const clubRef = doc(db, "clubs", clubId);
       await updateDoc(clubRef, { chatBackgroundBase64: base64 });
       Alert.alert("Success", "Chat wallpaper updated!");
-
     } finally {
       setIsPickingBackground(false);
     }
   }
 
   async function clearChatBackground() {
-    // Only presidents can remove the shared chat background
     if (!isPresident) return;
     if (!clubId) return;
 
@@ -265,6 +256,72 @@ export default function ClubInfoScreen() {
     ]);
   }
 
+  async function pickGroupIcon() {
+    if (!isPresident) return;
+    if (!clubId) return;
+    if (isPickingGroupIcon) return;
+
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== "granted") return;
+
+    setIsPickingGroupIcon(true);
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.3
+      });
+
+      if (result.canceled) return;
+
+      const asset = result.assets?.[0];
+      if (!asset?.uri) return;
+
+      const manipulated = await manipulateAsync(
+        asset.uri,
+        [{ resize: { width: 300, height: 300 } }],
+        { compress: 0.35, format: SaveFormat.JPEG, base64: true }
+      );
+
+      const base64 = manipulated.base64 || null;
+      if (!base64) return;
+
+      if (base64.length > 500000) {
+        console.log("ICON_TOO_LARGE", base64.length);
+        return;
+      }
+
+      const clubRef = doc(db, "clubs", clubId);
+      await updateDoc(clubRef, { groupIconBase64: base64 });
+      Alert.alert("Success", "Group icon updated!");
+    } finally {
+      setIsPickingGroupIcon(false);
+    }
+  }
+
+  async function clearGroupIcon() {
+    if (!isPresident) return;
+    if (!clubId) return;
+
+    Alert.alert("Remove group icon?", "This will remove the chat room icon for everyone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const clubRef = doc(db, "clubs", clubId);
+            await updateDoc(clubRef, { groupIconBase64: null });
+          } catch (e: any) {
+            console.log("CLEAR_ICON_ERROR", e?.code, e?.message, e);
+          }
+        }
+      }
+    ]);
+  }
+
   if (!club) {
     return (
       <View style={styles.loadingWrap}>
@@ -274,227 +331,257 @@ export default function ClubInfoScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.headerTopRow}>
-        <View style={styles.headerSide}>
-          {/* <Pressable
-            onPress={() =>
-              // Opens the club calendar and passes the club id and name
-              router.push({
-                pathname: "/calendar",
-                params: {
-                  clubId: clubId || "",
-                  clubName: club.name || ""
-                }
-              })
-            }
-          >
-            <Image
-              source={require("../assets/images/calendarGraphic.png")}
-              style={styles.headerIcon}
-              resizeMode="contain"
-            />
-          </Pressable> */}
-        </View>
-
-        <View style={styles.headerCenterWrap}>
-          <Text style={styles.clubName}>{club.name}</Text>
-          {!!club.clubCode && (
-            <Text style={styles.clubCode}>Code: {club.clubCode}</Text>
-          )}
-        </View>
-
-        <View style={styles.headerSide} />
-      </View>
-
-      {!!club.imageBase64 && (
-        <Image
-          source={{ uri: `data:image/jpeg;base64,${club.imageBase64}` }}
-          style={styles.image}
-        />
-      )}
-
-      {isPresident && (
-        <View style={styles.backgroundButtonsRow}>
-          <Pressable
-            style={styles.openCalendarButton}
-            onPress={pickChatBackground}
-            disabled={isPickingBackground}
-          >
-            <Text style={styles.openCalendarText}>
-              {isPickingBackground ? "..." : "Chat Background"}
-            </Text>
-          </Pressable>
-
-          {!!club.chatBackgroundBase64 && (
-            <Pressable
-              style={styles.openCalendarButton}
-              onPress={clearChatBackground}
-            >
-              <Text style={styles.openCalendarText}>Remove Background</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#7b97d4" }} edges={["top"]}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.headerTopRow}>
+          <View style={styles.headerSide}>
+            <Pressable onPress={() => router.back()} style={styles.backButton}>
+              <Text style={styles.backButtonArrow}>‹</Text>
             </Pressable>
-          )}
+          </View>
+
+          <View style={styles.headerCenterWrap}>
+            <Text style={styles.clubName}>{club.name}</Text>
+            {!!club.clubCode && (
+              <Text style={styles.clubCode}>Code: {club.clubCode}</Text>
+            )}
+          </View>
+
+          <View style={styles.headerSide} />
         </View>
-      )}
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About</Text>
-        {isPresident ? (
-          <TextInput
-            value={aboutInput}
-            onChangeText={setAboutInput}
-            placeholder="Write about your club"
-            placeholderTextColor="#6B7280"
-            style={[styles.customBadgeInput, styles.multilineInput]}
-            multiline
-            textAlignVertical="top"
+        {!!club.imageBase64 && (
+          <Image
+            source={{ uri: `data:image/jpeg;base64,${club.imageBase64}` }}
+            style={styles.image}
           />
-        ) : (
-          <Text style={styles.sectionText}>
-            {club.about || "No description yet."}
-          </Text>
         )}
 
-        {isPresident && (
-          <Pressable
-            style={styles.saveButton}
-            onPress={saveAboutInfo}
-            disabled={isSavingAbout}
-          >
-            <Text style={styles.saveButtonText}>
-              {isSavingAbout ? "Saving..." : "Save About"}
-            </Text>
-          </Pressable>
-        )}
-      </View>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Group Icon</Text>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Rules</Text>
-        {isPresident ? (
-          <TextInput
-            value={rulesInput}
-            onChangeText={setRulesInput}
-            placeholder="Write club rules"
-            placeholderTextColor="#6B7280"
-            style={[styles.customBadgeInput, styles.multilineInput]}
-            multiline
-            textAlignVertical="top"
-          />
-        ) : (
-          <Text style={styles.sectionText}>
-            {club.rules || "No rules added."}
-          </Text>
-        )}
+          {!!club.groupIconBase64 ? (
+            <Image
+              source={{ uri: `data:image/jpeg;base64,${club.groupIconBase64}` }}
+              style={styles.groupIconPreview}
+            />
+          ) : (
+            <View style={styles.groupIconPlaceholder}>
+              <Text style={styles.groupIconPlaceholderText}>
+                {(club.name || "?").charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
 
-        {isPresident && (
-          <Pressable
-            style={styles.saveButton}
-            onPress={saveRulesInfo}
-            disabled={isSavingRules}
-          >
-            <Text style={styles.saveButtonText}>
-              {isSavingRules ? "Saving..." : "Save Info"}
-            </Text>
-          </Pressable>
-        )}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Club Focus</Text>
-
-        <View style={styles.badgesWrap}>
-          {BADGE_OPTIONS.map(badge => {
-            // Check whether this badge is currently selected
-            const isSelected = selectedBadges.some(
-              item => item.toLowerCase() === badge.toLowerCase()
-            );
-
-            return (
+          {isPresident ? (
+            <View style={styles.backgroundButtonsRow}>
               <Pressable
-                key={badge}
-                style={[
-                  styles.badge,
-                  isSelected && styles.badgeSelected
-                ]}
-                onPress={() => toggleBadge(badge)}
-                disabled={!isPresident}
+                style={styles.openCalendarButton}
+                onPress={pickGroupIcon}
+                disabled={isPickingGroupIcon}
               >
-                <Text
-                  style={[
-                    styles.badgeText,
-                    isSelected && styles.badgeTextSelected
-                  ]}
-                >
-                  {badge}
+                <Text style={styles.openCalendarText}>
+                  {isPickingGroupIcon ? "..." : "Choose Group Icon"}
                 </Text>
               </Pressable>
-            );
-          })}
+
+              {!!club.groupIconBase64 && (
+                <Pressable
+                  style={styles.openCalendarButton}
+                  onPress={clearGroupIcon}
+                >
+                  <Text style={styles.openCalendarText}>Remove Icon</Text>
+                </Pressable>
+              )}
+            </View>
+          ) : (
+            <Text style={styles.sectionSubText}>
+              Only the president can edit the group icon.
+            </Text>
+          )}
         </View>
 
-        {!!sortedSelectedBadges.length && (
-          <View style={styles.selectedWrap}>
-            <Text style={styles.selectedTitle}>Selected Focuses</Text>
+        {isPresident && (
+          <View style={styles.backgroundButtonsRow}>
+            <Pressable
+              style={styles.openCalendarButton}
+              onPress={pickChatBackground}
+              disabled={isPickingBackground}
+            >
+              <Text style={styles.openCalendarText}>
+                {isPickingBackground ? "..." : "Chat Background"}
+              </Text>
+            </Pressable>
 
-            <View style={styles.badgesWrap}>
-              {sortedSelectedBadges.map(badge => (
-                <Pressable
-                  key={badge}
-                  style={styles.selectedBadge}
-                  onPress={() => toggleBadge(badge)}
-                  disabled={!isPresident}
-                >
-                  <Text style={styles.selectedBadgeText}>{badge}</Text>
-                  {isPresident && <Text style={styles.removeBadgeText}> ×</Text>}
-                </Pressable>
-              ))}
-            </View>
+            {!!club.chatBackgroundBase64 && (
+              <Pressable
+                style={styles.openCalendarButton}
+                onPress={clearChatBackground}
+              >
+                <Text style={styles.openCalendarText}>Remove Background</Text>
+              </Pressable>
+            )}
           </View>
         )}
 
-        {isPresident && (
-          <>
-            <View style={styles.customBadgeRow}>
-              <TextInput
-                value={customBadgeInput}
-                onChangeText={setCustomBadgeInput}
-                placeholder="Add custom focus"
-                placeholderTextColor="#6B7280"
-                style={styles.customBadgeInput}
-                maxLength={24}
-              />
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>About</Text>
+          {isPresident ? (
+            <TextInput
+              value={aboutInput}
+              onChangeText={setAboutInput}
+              placeholder="Write about your club"
+              placeholderTextColor="#6B7280"
+              style={[styles.customBadgeInput, styles.multilineInput]}
+              multiline
+              textAlignVertical="top"
+            />
+          ) : (
+            <Text style={styles.sectionText}>
+              {club.about || "No description yet."}
+            </Text>
+          )}
 
-              <Pressable style={styles.addBadgeButton} onPress={addCustomBadge}>
-                <Text style={styles.addBadgeButtonText}>Add</Text>
-              </Pressable>
-            </View>
-
+          {isPresident && (
             <Pressable
               style={styles.saveButton}
-              onPress={saveBadges}
-              disabled={isSavingBadges}
+              onPress={saveAboutInfo}
+              disabled={isSavingAbout}
             >
               <Text style={styles.saveButtonText}>
-                {isSavingBadges ? "Saving..." : "Save Badges"}
+                {isSavingAbout ? "Saving..." : "Save About"}
               </Text>
             </Pressable>
-          </>
-        )}
+          )}
+        </View>
 
-        {!sortedSelectedBadges.length && (
-          <Text style={styles.sectionSubText}>
-            No focus badges selected yet.
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Rules</Text>
+          {isPresident ? (
+            <TextInput
+              value={rulesInput}
+              onChangeText={setRulesInput}
+              placeholder="Write club rules"
+              placeholderTextColor="#6B7280"
+              style={[styles.customBadgeInput, styles.multilineInput]}
+              multiline
+              textAlignVertical="top"
+            />
+          ) : (
+            <Text style={styles.sectionText}>
+              {club.rules || "No rules added."}
+            </Text>
+          )}
+
+          {isPresident && (
+            <Pressable
+              style={styles.saveButton}
+              onPress={saveRulesInfo}
+              disabled={isSavingRules}
+            >
+              <Text style={styles.saveButtonText}>
+                {isSavingRules ? "Saving..." : "Save Info"}
+              </Text>
+            </Pressable>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Club Focus</Text>
+
+          <View style={styles.badgesWrap}>
+            {BADGE_OPTIONS.map(badge => {
+              const isSelected = selectedBadges.some(
+                item => item.toLowerCase() === badge.toLowerCase()
+              );
+
+              return (
+                <Pressable
+                  key={badge}
+                  style={[
+                    styles.badge,
+                    isSelected && styles.badgeSelected
+                  ]}
+                  onPress={() => toggleBadge(badge)}
+                  disabled={!isPresident}
+                >
+                  <Text
+                    style={[
+                      styles.badgeText,
+                      isSelected && styles.badgeTextSelected
+                    ]}
+                  >
+                    {badge}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {!!sortedSelectedBadges.length && (
+            <View style={styles.selectedWrap}>
+              <Text style={styles.selectedTitle}>Selected Focuses</Text>
+
+              <View style={styles.badgesWrap}>
+                {sortedSelectedBadges.map(badge => (
+                  <Pressable
+                    key={badge}
+                    style={styles.selectedBadge}
+                    onPress={() => toggleBadge(badge)}
+                    disabled={!isPresident}
+                  >
+                    <Text style={styles.selectedBadgeText}>{badge}</Text>
+                    {isPresident && <Text style={styles.removeBadgeText}> ×</Text>}
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {isPresident && (
+            <>
+              <View style={styles.customBadgeRow}>
+                <TextInput
+                  value={customBadgeInput}
+                  onChangeText={setCustomBadgeInput}
+                  placeholder="Add custom focus"
+                  placeholderTextColor="#6B7280"
+                  style={styles.customBadgeInput}
+                  maxLength={24}
+                />
+
+                <Pressable style={styles.addBadgeButton} onPress={addCustomBadge}>
+                  <Text style={styles.addBadgeButtonText}>Add</Text>
+                </Pressable>
+              </View>
+
+              <Pressable
+                style={styles.saveButton}
+                onPress={saveBadges}
+                disabled={isSavingBadges}
+              >
+                <Text style={styles.saveButtonText}>
+                  {isSavingBadges ? "Saving..." : "Save Badges"}
+                </Text>
+              </Pressable>
+            </>
+          )}
+
+          {!sortedSelectedBadges.length && (
+            <Text style={styles.sectionSubText}>
+              No focus badges selected yet.
+            </Text>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Club Stats</Text>
+          <Text style={styles.sectionText}>
+            Members: {club.members?.length || 0}
           </Text>
-        )}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Club Stats</Text>
-        <Text style={styles.sectionText}>
-          Members: {club.members?.length || 0}
-        </Text>
-      </View>
-    </ScrollView>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -521,11 +608,22 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center"
   },
-  headerIcon: {
-    width: 45,
-    height: 45,
-    marginBottom: 20
-    },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE"
+  },
+  backButtonArrow: {
+    fontSize: 28,
+    lineHeight: 28,
+    color: "#365E95",
+    fontWeight: "600"
+  },
   loadingWrap: {
     flex: 1,
     justifyContent: "center",
@@ -570,7 +668,8 @@ const styles = StyleSheet.create({
   backgroundButtonsRow: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: 12
+    gap: 12,
+    flexWrap: "wrap"
   },
   openCalendarButton: {
     backgroundColor: "#7b97d4",
@@ -584,6 +683,30 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: 12,
     fontWeight: "600"
+  },
+  groupIconPreview: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    alignSelf: "center",
+    marginTop: 10,
+    marginBottom: 12
+  },
+  groupIconPlaceholder: {
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    alignSelf: "center",
+    marginTop: 10,
+    marginBottom: 12,
+    backgroundColor: "#7b97d4",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  groupIconPlaceholderText: {
+    color: "white",
+    fontSize: 28,
+    fontWeight: "700"
   },
   badgesWrap: {
     flexDirection: "row",

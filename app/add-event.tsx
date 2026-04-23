@@ -12,6 +12,7 @@ import {
   TextInput,
   View
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function AddEventScreen() {
   const params = useLocalSearchParams();
@@ -58,13 +59,11 @@ export default function AddEventScreen() {
 
   const [saving, setSaving] = useState(false);
 
-  // Keep the selected club synced with the latest route params
   useEffect(() => {
     setSelectedClubId(routeClubId);
     setSelectedClubName(routeClubName);
   }, [routeClubId, routeClubName]);
 
-  // When the user returns from the map picker, update the location fields
   useEffect(() => {
     if (typeof params.locationName === "string") {
       setLocation(params.locationName);
@@ -89,7 +88,6 @@ export default function AddEventScreen() {
     }
   }, [params.locationName, params.locationAddress, params.lat, params.lng]);
 
-  // Returns a date with the time cleared out, useful for storing only the event day
   const getDateOnlyValue = (date: Date) => {
     const updated = new Date(date);
     updated.setHours(0, 0, 0, 0);
@@ -106,7 +104,6 @@ export default function AddEventScreen() {
     return updated;
   };
 
-  // Handles validation and saving the event to Firestore
   const handleAddEvent = async () => {
     if (!title.trim()) {
       alert("Please fill out title");
@@ -183,250 +180,262 @@ export default function AddEventScreen() {
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={styles.title}>Add Event</Text>
-
-      {!!selectedClubName && (
-        <View style={styles.clubBox}>
-          <Text style={styles.clubLabel}>Creating event for</Text>
-          <Text style={styles.clubValue}>{selectedClubName}</Text>
-        </View>
-      )}
-
-      <TextInput
-        placeholder="Event title"
-        placeholderTextColor="#4B5563"
-        value={title}
-        onChangeText={setTitle}
-        style={styles.input}
-      />
-
-      <TextInput
-        placeholder="Description (optional)"
-        placeholderTextColor="#4B5563"
-        value={description}
-        onChangeText={setDescription}
-        style={[styles.input, styles.multiline]}
-        multiline
-      />
-
-      <TextInput
-        placeholder="Location name (optional)"
-        placeholderTextColor="#4B5563"
-        value={location}
-        onChangeText={setLocation}
-        style={styles.input}
-      />
-
-      <Pressable
-        style={styles.mapButton}
-        onPress={() =>
-          router.push({
-            pathname: "/map-picker",
-            params: {
-              clubId: selectedClubId,
-              clubName: selectedClubName,
-              initialName: location,
-              initialAddress: locationAddress,
-              initialLat:
-                locationLat !== null ? String(locationLat) : undefined,
-              initialLng:
-                locationLng !== null ? String(locationLng) : undefined
-            }
-          })
-        }
+    <SafeAreaView style={styles.safeArea} edges={["top"]}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.mapButtonText}>
-          {locationLat !== null && locationLng !== null
-            ? "Change Location on Map"
-            : "Pick Location on Map"}
-        </Text>
-      </Pressable>
+        <View style={styles.headerRow}>
+          <Pressable style={styles.backButton} onPress={() => router.back()}>
+            <Text style={styles.backButtonArrow}>‹</Text>
+          </Pressable>
 
-      {/* Shows the full selected address only if one exists */}
-      {!!locationAddress && (
-        <View style={styles.addressBox}>
-          <Text style={styles.addressLabel}>Selected address</Text>
-          <Text style={styles.addressText}>{locationAddress}</Text>
+          <Text style={styles.title}>Add Event</Text>
+
+          <View style={styles.headerRightSpacer} />
         </View>
-      )}
 
-      <View style={styles.typeToggleWrap}>
+        {!!selectedClubName && (
+          <View style={styles.clubBox}>
+            <Text style={styles.clubLabel}>Creating event for</Text>
+            <Text style={styles.clubValue}>{selectedClubName}</Text>
+          </View>
+        )}
+
+        <TextInput
+          placeholder="Event title"
+          placeholderTextColor="#4B5563"
+          value={title}
+          onChangeText={setTitle}
+          style={styles.input}
+        />
+
+        <TextInput
+          placeholder="Description (optional)"
+          placeholderTextColor="#4B5563"
+          value={description}
+          onChangeText={setDescription}
+          style={[styles.input, styles.multiline]}
+          multiline
+        />
+
+        <TextInput
+          placeholder="Location name (optional)"
+          placeholderTextColor="#4B5563"
+          value={location}
+          onChangeText={setLocation}
+          style={styles.input}
+        />
+
         <Pressable
-          style={[
-            styles.typeToggleButton,
-            eventType === "all-day" && styles.typeToggleButtonActive
-          ]}
-          onPress={() => {
-            setEventType("all-day");
-            setShowStartTimePicker(false);
-            setShowEndTimePicker(false);
-          }}
+          style={styles.mapButton}
+          onPress={() =>
+            router.push({
+              pathname: "/map-picker",
+              params: {
+                clubId: selectedClubId,
+                clubName: selectedClubName,
+                initialName: location,
+                initialAddress: locationAddress,
+                initialLat:
+                  locationLat !== null ? String(locationLat) : undefined,
+                initialLng:
+                  locationLng !== null ? String(locationLng) : undefined
+              }
+            })
+          }
         >
-          <Text
+          <Text style={styles.mapButtonText}>
+            {locationLat !== null && locationLng !== null
+              ? "Change Location on Map"
+              : "Pick Location on Map"}
+          </Text>
+        </Pressable>
+
+        {!!locationAddress && (
+          <View style={styles.addressBox}>
+            <Text style={styles.addressLabel}>Selected address</Text>
+            <Text style={styles.addressText}>{locationAddress}</Text>
+          </View>
+        )}
+
+        <View style={styles.typeToggleWrap}>
+          <Pressable
             style={[
-              styles.typeToggleText,
-              eventType === "all-day" && styles.typeToggleTextActive
+              styles.typeToggleButton,
+              eventType === "all-day" && styles.typeToggleButtonActive
             ]}
-          >
-            All-Day
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={[
-            styles.typeToggleButton,
-            eventType === "time" && styles.typeToggleButtonActive
-          ]}
-          onPress={() => setEventType("time")}
-        >
-          <Text
-            style={[
-              styles.typeToggleText,
-              eventType === "time" && styles.typeToggleTextActive
-            ]}
-          >
-            Time
-          </Text>
-        </Pressable>
-      </View>
-
-      <View style={styles.inlineContainer}>
-        <Pressable
-          style={[styles.inlineRow, styles.firstInlineRow]}
-          onPress={() => {
-            setShowDatePicker(prev => !prev);
-          }}
-        >
-          <Text style={styles.inlineLabel}>Date</Text>
-          <Text style={styles.inlineValue}>
-            {eventDate.toLocaleDateString()}
-          </Text>
-        </Pressable>
-
-        {showDatePicker && (
-          <DateTimePicker
-            value={eventDate}
-            mode="date"
-            display="inline"
-            themeVariant="light"
-            onChange={(event, selectedDate) => {
-              if (!selectedDate) return;
-
-              const updatedEventDate = new Date(eventDate);
-              updatedEventDate.setFullYear(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                selectedDate.getDate()
-              );
-              setEventDate(updatedEventDate);
-
-              setStartDate(prev => applySelectedDayToTime(prev, selectedDate));
-              setEndDate(prev => applySelectedDayToTime(prev, selectedDate));
+            onPress={() => {
+              setEventType("all-day");
+              setShowStartTimePicker(false);
+              setShowEndTimePicker(false);
             }}
-          />
-        )}
-
-        {eventType === "time" && (
-          <>
-            <Pressable
-              style={styles.inlineRow}
-              onPress={() => {
-                setShowStartTimePicker(prev => !prev);
-              }}
+          >
+            <Text
+              style={[
+                styles.typeToggleText,
+                eventType === "all-day" && styles.typeToggleTextActive
+              ]}
             >
-              <Text style={styles.inlineLabel}>Start Time</Text>
-              <Text style={styles.inlineValue}>
-                {startDate.toLocaleTimeString([], {
-                  hour: "numeric",
-                  minute: "2-digit"
-                })}
-              </Text>
-            </Pressable>
+              All-Day
+            </Text>
+          </Pressable>
 
-            {/* Inline time picker for the start time */}
-            {showStartTimePicker && (
-              <DateTimePicker
-                value={startDate}
-                mode="time"
-                display="inline"
-                themeVariant="light"
-                onChange={(event, selectedDate) => {
-                  if (!selectedDate) return;
-
-                  const updated = new Date(startDate);
-                  updated.setHours(selectedDate.getHours());
-                  updated.setMinutes(selectedDate.getMinutes());
-                  updated.setSeconds(0);
-                  updated.setMilliseconds(0);
-                  setStartDate(updated);
-
-                  // If the end time is no longer valid, automatically push it 1 hour later
-                  if (endDate <= updated) {
-                    const newEnd = new Date(updated);
-                    newEnd.setHours(newEnd.getHours() + 1);
-                    setEndDate(newEnd);
-                  }
-                }}
-              />
-            )}
-
-            <Pressable
-              style={styles.inlineRow}
-              onPress={() => {
-                setShowEndTimePicker(prev => !prev);
-              }}
+          <Pressable
+            style={[
+              styles.typeToggleButton,
+              eventType === "time" && styles.typeToggleButtonActive
+            ]}
+            onPress={() => setEventType("time")}
+          >
+            <Text
+              style={[
+                styles.typeToggleText,
+                eventType === "time" && styles.typeToggleTextActive
+              ]}
             >
-              <Text style={styles.inlineLabel}>End Time</Text>
-              <Text style={styles.inlineValue}>
-                {endDate.toLocaleTimeString([], {
-                  hour: "numeric",
-                  minute: "2-digit"
-                })}
-              </Text>
-            </Pressable>
+              Time
+            </Text>
+          </Pressable>
+        </View>
 
-            {showEndTimePicker && (
-              <DateTimePicker
-                value={endDate}
-                mode="time"
-                display="inline"
-                themeVariant="light"
-                onChange={(event, selectedDate) => {
-                  if (!selectedDate) return;
+        <View style={styles.inlineContainer}>
+          <Pressable
+            style={[styles.inlineRow, styles.firstInlineRow]}
+            onPress={() => {
+              setShowDatePicker(prev => !prev);
+            }}
+          >
+            <Text style={styles.inlineLabel}>Date</Text>
+            <Text style={styles.inlineValue}>
+              {eventDate.toLocaleDateString()}
+            </Text>
+          </Pressable>
 
-                  const updated = new Date(endDate);
-                  updated.setHours(selectedDate.getHours());
-                  updated.setMinutes(selectedDate.getMinutes());
-                  updated.setSeconds(0);
-                  updated.setMilliseconds(0);
-                  setEndDate(updated);
+          {showDatePicker && (
+            <DateTimePicker
+              value={eventDate}
+              mode="date"
+              display="inline"
+              themeVariant="light"
+              onChange={(event, selectedDate) => {
+                if (!selectedDate) return;
+
+                const updatedEventDate = new Date(eventDate);
+                updatedEventDate.setFullYear(
+                  selectedDate.getFullYear(),
+                  selectedDate.getMonth(),
+                  selectedDate.getDate()
+                );
+                setEventDate(updatedEventDate);
+
+                setStartDate(prev => applySelectedDayToTime(prev, selectedDate));
+                setEndDate(prev => applySelectedDayToTime(prev, selectedDate));
+              }}
+            />
+          )}
+
+          {eventType === "time" && (
+            <>
+              <Pressable
+                style={styles.inlineRow}
+                onPress={() => {
+                  setShowStartTimePicker(prev => !prev);
                 }}
-              />
-            )}
-          </>
-        )}
-      </View>
+              >
+                <Text style={styles.inlineLabel}>Start Time</Text>
+                <Text style={styles.inlineValue}>
+                  {startDate.toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit"
+                  })}
+                </Text>
+              </Pressable>
 
-      <Pressable
-        style={[styles.button, saving && styles.disabled]}
-        onPress={handleAddEvent}
-        disabled={saving}
-      >
-        <Text style={styles.buttonText}>
-          {saving ? "Saving..." : "Save Event"}
-        </Text>
-      </Pressable>
-    </ScrollView>
+              {showStartTimePicker && (
+                <DateTimePicker
+                  value={startDate}
+                  mode="time"
+                  display="inline"
+                  themeVariant="light"
+                  onChange={(event, selectedDate) => {
+                    if (!selectedDate) return;
+
+                    const updated = new Date(startDate);
+                    updated.setHours(selectedDate.getHours());
+                    updated.setMinutes(selectedDate.getMinutes());
+                    updated.setSeconds(0);
+                    updated.setMilliseconds(0);
+                    setStartDate(updated);
+
+                    if (endDate <= updated) {
+                      const newEnd = new Date(updated);
+                      newEnd.setHours(newEnd.getHours() + 1);
+                      setEndDate(newEnd);
+                    }
+                  }}
+                />
+              )}
+
+              <Pressable
+                style={styles.inlineRow}
+                onPress={() => {
+                  setShowEndTimePicker(prev => !prev);
+                }}
+              >
+                <Text style={styles.inlineLabel}>End Time</Text>
+                <Text style={styles.inlineValue}>
+                  {endDate.toLocaleTimeString([], {
+                    hour: "numeric",
+                    minute: "2-digit"
+                  })}
+                </Text>
+              </Pressable>
+
+              {showEndTimePicker && (
+                <DateTimePicker
+                  value={endDate}
+                  mode="time"
+                  display="inline"
+                  themeVariant="light"
+                  onChange={(event, selectedDate) => {
+                    if (!selectedDate) return;
+
+                    const updated = new Date(endDate);
+                    updated.setHours(selectedDate.getHours());
+                    updated.setMinutes(selectedDate.getMinutes());
+                    updated.setSeconds(0);
+                    updated.setMilliseconds(0);
+                    setEndDate(updated);
+                  }}
+                />
+              )}
+            </>
+          )}
+        </View>
+
+        <Pressable
+          style={[styles.button, saving && styles.disabled]}
+          onPress={handleAddEvent}
+          disabled={saving}
+        >
+          <Text style={styles.buttonText}>
+            {saving ? "Saving..." : "Save Event"}
+          </Text>
+        </Pressable>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#dbeafe"
+  },
+
   container: {
     flex: 1,
     backgroundColor: "#dbeafe"
@@ -437,11 +446,38 @@ const styles = StyleSheet.create({
     paddingBottom: 40
   },
 
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20
+  },
+
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE"  
+  },
+
+  backButtonArrow: {
+    fontSize: 22,
+    lineHeight: 22,
+    color: "#365E95",
+    fontWeight: "600"
+  },
+
+  headerRightSpacer: {
+    width: 22
+  },
+
   title: {
     fontSize: 22,
     fontWeight: "700",
-    textAlign: "center",
-    marginBottom: 20,
     color: "#111827"
   },
 

@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   FlatList,
+  Image,
   Modal,
   Pressable,
   StyleSheet,
@@ -24,6 +25,7 @@ import {
   TextInput,
   View
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type ChatRoomItem = {
   id: string;
@@ -31,12 +33,11 @@ type ChatRoomItem = {
   lastMessage: string;
   lastMessageSender: string;
   lastMessageTime: any;
+  groupIconBase64?: string | null;
 };
 
-// check time of gc messages to display on club rows
 function formatChatTime(value: any): string {
   try {
-    // Convert Firestore timestamp or Date into a usable Date object
     const d =
       value && typeof value?.toDate === "function"
         ? value.toDate()
@@ -93,8 +94,7 @@ export default function ChatRoomsScreen() {
   const [newClubName, setNewClubName] = useState("");
   const [creatingClub, setCreatingClub] = useState(false);
 
-  useEffect(() => { 
-    // If user is missing or there are no rooms yet, clear unread counts
+  useEffect(() => {
     if (!currentUid || rooms.length === 0) {
       setUnreadCounts({});
       return;
@@ -107,7 +107,6 @@ export default function ChatRoomsScreen() {
 
       let chatsQuery;
 
-      // If the user has read this room before, only listen for newer messages
       if (lastReadTime) {
         chatsQuery = query(
           collection(db, "chats"),
@@ -127,7 +126,6 @@ export default function ChatRoomsScreen() {
         snap.docs.forEach(d => {
           const data = d.data();
 
-          // Only count messages from other people as unread
           if (data.senderUid !== currentUid) {
             count += 1;
           }
@@ -164,7 +162,6 @@ export default function ChatRoomsScreen() {
   }, [currentUid]);
 
   useEffect(() => {
-    // Watch Firebase auth so the screen always knows the current user
     const unsub = onAuthStateChanged(auth, user => {
       setCurrentUid(user ? user.uid : null);
     });
@@ -173,7 +170,6 @@ export default function ChatRoomsScreen() {
   }, []);
 
   useEffect(() => {
-    // Do not query clubs until a user is logged in
     if (!currentUid) return;
 
     const q = query(
@@ -190,11 +186,11 @@ export default function ChatRoomsScreen() {
           name: data.name || "Club Chat",
           lastMessage: data.lastMessage || "",
           lastMessageSender: data.lastMessageSender || "",
-          lastMessageTime: data.lastMessageTime || null
+          lastMessageTime: data.lastMessageTime || null,
+          groupIconBase64: data.groupIconBase64 || null
         };
       });
 
-      // Keep pinned chats at the top, then sort the rest by most recent activity
       list.sort((a, b) => {
         const aIsPinned = pinnedClubIds.includes(a.id);
         const bIsPinned = pinnedClubIds.includes(b.id);
@@ -233,7 +229,6 @@ export default function ChatRoomsScreen() {
   }
 
   function renderPreview(item: ChatRoomItem) {
-    // Show fallback text when the room has no messages yet
     if (!item.lastMessage) return "No messages yet";
     if (!item.lastMessageSender) return item.lastMessage;
     return `${item.lastMessageSender}: ${item.lastMessage}`;
@@ -252,7 +247,6 @@ export default function ChatRoomsScreen() {
     try {
       setCreatingClub(true);
 
-      // Check whether another club already uses this exact name
       const existingClubQuery = query(
         collection(db, "clubs"),
         where("name", "==", normalizedName)
@@ -269,7 +263,6 @@ export default function ChatRoomsScreen() {
       let clubCode = "";
       let codeExists = true;
 
-      // Keep generating codes until one is unique
       while (codeExists) {
         clubCode = generateClubCode();
 
@@ -323,7 +316,6 @@ export default function ChatRoomsScreen() {
       return;
     }
 
-    // If the user has fewer than 3 pinned chats, add this one directly
     if (pinnedClubIds.length < 3) {
       await updateDoc(userRef, {
         pinnedClubIds: [...pinnedClubIds, room.id]
@@ -331,7 +323,6 @@ export default function ChatRoomsScreen() {
       return;
     }
 
-    // If 3 chats are already pinned, let the user choose one to replace
     const pinnedRooms = pinnedClubIds
       .map(id => rooms.find(roomItem => roomItem.id === id))
       .filter(Boolean) as ChatRoomItem[];
@@ -365,7 +356,6 @@ export default function ChatRoomsScreen() {
     const userRef = doc(db, "users", currentUid);
     const updatedPinned = pinnedClubIds.filter(id => id !== room.id);
 
-    // Remove this room from the pinned list
     await updateDoc(userRef, {
       pinnedClubIds: updatedPinned
     });
@@ -374,7 +364,6 @@ export default function ChatRoomsScreen() {
   function handleRoomLongPress(room: ChatRoomItem) {
     const isPinned = pinnedClubIds.includes(room.id);
 
-    // Long press opens either pin or unpin options depending on current state
     Alert.alert(
       room.name,
       isPinned ? "This chat is pinned." : "Pin this chat to keep it at the top.",
@@ -397,165 +386,172 @@ export default function ChatRoomsScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Students United Chat Rooms</Text>
-      </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#7b97d4" }} edges={["top"]}>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Students United Chat Rooms</Text>
+        </View>
 
-      {loading ? (
-        <Text style={styles.statusText}>Loading chats...</Text>
-      ) : (
-        <>
-          {rooms.length === 0 && (
-            <Text style={styles.noClubMessage}>Enroll in a club!</Text>
-          )}
+        {loading ? (
+          <Text style={styles.statusText}>Loading chats...</Text>
+        ) : (
+          <>
+            {rooms.length === 0 && (
+              <Text style={styles.noClubMessage}>Enroll in a club!</Text>
+            )}
 
-          <FlatList
-            data={rooms}
-            keyExtractor={item => item.id}
-            contentContainerStyle={styles.listContent}
-            renderItem={({ item }) => {
-              const unreadCount = unreadCounts[item.id] || 0;
-              const unread = unreadCount > 0;
-              const isPinned = pinnedClubIds.includes(item.id);
+            <FlatList
+              data={rooms}
+              keyExtractor={item => item.id}
+              contentContainerStyle={styles.listContent}
+              renderItem={({ item }) => {
+                const unreadCount = unreadCounts[item.id] || 0;
+                const unread = unreadCount > 0;
+                const isPinned = pinnedClubIds.includes(item.id);
 
-              return (
-                <Pressable
-                  style={styles.chatRow}
-                  onPress={() => openChat(item)}
-                  onLongPress={() => handleRoomLongPress(item)}
-                >
-                  <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                      {item.name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-
-                  <View style={styles.textWrap}>
-                    <View style={styles.nameRow}>
-                      <Text numberOfLines={1} style={styles.chatName}>
-                        {item.name}
-                      </Text>
-
-                      {isPinned && (
-                        <Text style={styles.pinIcon}>📌</Text>
-                      )}
-                    </View>
-
-                    <Text numberOfLines={1} style={styles.previewText}>
-                      {renderPreview(item)}
-                    </Text>
-                  </View>
-
-                  <View style={styles.rightWrap}>
-                    <Text style={[styles.timeText, unread && styles.unreadTimeText]}>
-                      {formatChatTime(item.lastMessageTime)}
-                    </Text>
-
-                    {unread && (
-                      <View style={styles.unreadBadge}>
-                        <Text style={styles.unreadBadgeText}>
-                          {unreadCount > 99 ? "99+" : unreadCount}
+                return (
+                  <Pressable
+                    style={styles.chatRow}
+                    onPress={() => openChat(item)}
+                    onLongPress={() => handleRoomLongPress(item)}
+                  >
+                    {item.groupIconBase64 ? (
+                      <Image
+                        source={{ uri: `data:image/jpeg;base64,${item.groupIconBase64}` }}
+                        style={styles.avatarImage}
+                      />
+                    ) : (
+                      <View style={styles.avatar}>
+                        <Text style={styles.avatarText}>
+                          {item.name.charAt(0).toUpperCase()}
                         </Text>
                       </View>
                     )}
-                  </View>
-                </Pressable>
-              );
-            }}
-          />
 
-          <View style={styles.floatingButtonsWrap}>
-            <Pressable
-              style={styles.floatingCreateButton}
-              onPress={() => setShowCreateClubModal(true)}
-            >
-              <Text style={styles.floatingCreateButtonText}>Create Club</Text>
-            </Pressable>
+                    <View style={styles.textWrap}>
+                      <View style={styles.nameRow}>
+                        <Text numberOfLines={1} style={styles.chatName}>
+                          {item.name}
+                        </Text>
 
-            <Pressable
-              style={styles.floatingJoinButton}
-              onPress={() => router.push("/join-club")}
-            >
-              <Text style={styles.floatingJoinButtonText}>Join Club</Text>
-            </Pressable>
-          </View>
-        </>
-      )}
+                        {isPinned && (
+                          <Text style={styles.pinIcon}>📌</Text>
+                        )}
+                      </View>
 
-      <Modal
-        visible={showCreateClubModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          // Only allow closing while a club is not actively being created
-          if (!creatingClub) {
-            setShowCreateClubModal(false);
-          }
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Create Club</Text>
+                      <Text numberOfLines={1} style={styles.previewText}>
+                        {renderPreview(item)}
+                      </Text>
+                    </View>
 
-            <TextInput
-              placeholder="Enter club name"
-              placeholderTextColor="#6B7280"
-              value={newClubName}
-              onChangeText={setNewClubName}
-              autoCapitalize="characters"
-              style={styles.modalInput}
+                    <View style={styles.rightWrap}>
+                      <Text style={[styles.timeText, unread && styles.unreadTimeText]}>
+                        {formatChatTime(item.lastMessageTime)}
+                      </Text>
+
+                      {unread && (
+                        <View style={styles.unreadBadge}>
+                          <Text style={styles.unreadBadgeText}>
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </Pressable>
+                );
+              }}
             />
 
-            <Text style={styles.positionLabel}>Position</Text>
-            <TextInput
-              value="President"
-              editable={false}
-              style={[styles.modalInput, styles.disabledInput]}
-            />
-
-            <View style={styles.modalButtonsRow}>
+            <View style={styles.floatingButtonsWrap}>
               <Pressable
-                style={styles.modalCancelButton}
-                onPress={() => {
-                  // Reset and close modal if creation is not in progress
-                  if (!creatingClub) {
-                    setShowCreateClubModal(false);
-                    setNewClubName("");
-                  }
-                }}
-                disabled={creatingClub}
+                style={styles.floatingCreateButton}
+                onPress={() => setShowCreateClubModal(true)}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
+                <Text style={styles.floatingCreateButtonText}>Create Club</Text>
               </Pressable>
 
               <Pressable
-                style={styles.modalCreateButton}
-                onPress={handleCreateClub}
-                disabled={creatingClub}
+                style={styles.floatingJoinButton}
+                onPress={() => router.push("/join-club")}
               >
-                <Text style={styles.modalCreateText}>
-                  {creatingClub ? "Creating..." : "Create Club"}
-                </Text>
+                <Text style={styles.floatingJoinButtonText}>Join Club</Text>
               </Pressable>
             </View>
+          </>
+        )}
+
+        <Modal
+          visible={showCreateClubModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            if (!creatingClub) {
+              setShowCreateClubModal(false);
+            }
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Create Club</Text>
+
+              <TextInput
+                placeholder="Enter club name"
+                placeholderTextColor="#6B7280"
+                value={newClubName}
+                onChangeText={setNewClubName}
+                autoCapitalize="characters"
+                style={styles.modalInput}
+              />
+
+              <Text style={styles.positionLabel}>Position</Text>
+              <TextInput
+                value="President"
+                editable={false}
+                style={[styles.modalInput, styles.disabledInput]}
+              />
+
+              <View style={styles.modalButtonsRow}>
+                <Pressable
+                  style={styles.modalCancelButton}
+                  onPress={() => {
+                    if (!creatingClub) {
+                      setShowCreateClubModal(false);
+                      setNewClubName("");
+                    }
+                  }}
+                  disabled={creatingClub}
+                >
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </Pressable>
+
+                <Pressable
+                  style={styles.modalCreateButton}
+                  onPress={handleCreateClub}
+                  disabled={creatingClub}
+                >
+                  <Text style={styles.modalCreateText}>
+                    {creatingClub ? "Creating..." : "Create Club"}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
           </View>
-        </View>
-      </Modal>
-      <BottomNav/>
-    </View>
+        </Modal>
+        <BottomNav />
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-  flex: 1,
-  backgroundColor: "white",
-  paddingBottom: 95
-},
+    flex: 1,
+    backgroundColor: "white",
+    paddingBottom: 95
+  },
   header: {
     backgroundColor: "#7b97d4",
-    paddingTop: 30,
+    paddingTop: 18,
     paddingBottom: 16,
     paddingLeft: 18
   },
@@ -588,6 +584,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#7b97d4",
     alignItems: "center",
     justifyContent: "center",
+    marginRight: 12
+  },
+  avatarImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     marginRight: 12
   },
   avatarText: {
@@ -654,11 +656,11 @@ const styles = StyleSheet.create({
     minWidth: 62
   },
   floatingButtonsWrap: {
-  position: "absolute",
-  left: 16,
-  right: 16,
-  bottom: 95
-},
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 95
+  },
   floatingCreateButton: {
     backgroundColor: "white",
     paddingVertical: 14,
@@ -778,26 +780,26 @@ const styles = StyleSheet.create({
     fontSize: 14
   },
   floatingGeneralCalendarButton: {
-  backgroundColor: "#dbeafe",
-  paddingVertical: 14,
-  borderRadius: 12,
-  alignItems: "center",
-  justifyContent: "center",
-  marginBottom: 10,
-  borderWidth: 1,
-  borderColor: "#7b97d4",
-  elevation: 6,
-  shadowColor: "#000",
-  shadowOffset: {
-    width: 0,
-    height: 3
+    backgroundColor: "#dbeafe",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#7b97d4",
+    elevation: 6,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 3
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 6
   },
-  shadowOpacity: 0.15,
-  shadowRadius: 6
-},
-floatingGeneralCalendarButtonText: {
-  color: "#224bc5",
-  fontSize: 16,
-  fontWeight: "600"
-},
+  floatingGeneralCalendarButtonText: {
+    color: "#224bc5",
+    fontSize: 16,
+    fontWeight: "600"
+  }
 });

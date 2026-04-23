@@ -13,6 +13,7 @@ import {
   View
 } from "react-native";
 import MapView, { MapPressEvent, Marker, Region } from "react-native-maps";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type Suggestion = {
   placeId: string;
@@ -353,100 +354,102 @@ export default function MapPickerScreen() {
   };
 
   return (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={{ paddingBottom: 30 }}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.container}>
-        <Text style={styles.header}>Pick Event Location</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#dbeafe" }} edges={["top"]}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 30 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.container}>
+          <Text style={styles.header}>Pick Event Location</Text>
 
-        <View style={styles.searchWrap}>
-          <TextInput
-            placeholder="Search a place or address"
-            placeholderTextColor="#6B7280"
-            value={searchText}
-            onChangeText={text => {
-              // Update the search text and reopen suggestions while typing
-              setSearchText(text);
-              setPlaceSelected(false);
-              setShowSuggestions(true);
-            }}
-            style={styles.input}
-          />
+          <View style={styles.searchWrap}>
+            <TextInput
+              placeholder="Search a place or address"
+              placeholderTextColor="#6B7280"
+              value={searchText}
+              onChangeText={text => {
+                // Update the search text and reopen suggestions while typing
+                setSearchText(text);
+                setPlaceSelected(false);
+                setShowSuggestions(true);
+              }}
+              style={styles.input}
+            />
 
-          {(loadingSuggestions || loadingPlace) && (
-            <ActivityIndicator style={styles.loader} size="small" color="#2563EB" />
-          )}
+            {(loadingSuggestions || loadingPlace) && (
+              <ActivityIndicator style={styles.loader} size="small" color="#2563EB" />
+            )}
 
-          {showSuggestions && suggestions.length > 0 && searchText.trim().length >= 2 && (
-            <View style={styles.suggestionsBox}>
-              {suggestions.map(item => (
-                <Pressable
-                  key={item.placeId}
-                  style={styles.suggestionItem}
-                  onPress={() => fetchPlaceDetails(item)}
-                >
-                  <Text style={styles.suggestionMain}>{item.mainText}</Text>
-                  {!!item.secondaryText && (
-                    <Text style={styles.suggestionSecondary}>
-                      {item.secondaryText}
-                    </Text>
-                  )}
-                </Pressable>
-              ))}
+            {showSuggestions && suggestions.length > 0 && searchText.trim().length >= 2 && (
+              <View style={styles.suggestionsBox}>
+                {suggestions.map(item => (
+                  <Pressable
+                    key={item.placeId}
+                    style={styles.suggestionItem}
+                    onPress={() => fetchPlaceDetails(item)}
+                  >
+                    <Text style={styles.suggestionMain}>{item.mainText}</Text>
+                    {!!item.secondaryText && (
+                      <Text style={styles.suggestionSecondary}>
+                        {item.secondaryText}
+                      </Text>
+                    )}
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
+
+          <View style={styles.nameBox}>
+            <Text style={styles.nameLabel}>Calendar name</Text>
+            <TextInput
+              placeholder="Ex. Taco Bell"
+              placeholderTextColor="#6B7280"
+              value={locationName}
+              onChangeText={setLocationName}
+              style={styles.nameInput}
+            />
+          </View>
+
+          {!!locationAddress && (
+            <View style={styles.addressBox}>
+              <Text style={styles.addressLabel}>Selected address</Text>
+              <Text style={styles.addressText}>{locationAddress}</Text>
             </View>
           )}
-        </View>
 
-        <View style={styles.nameBox}>
-          <Text style={styles.nameLabel}>Calendar name</Text>
-          <TextInput
-            placeholder="Ex. Taco Bell"
-            placeholderTextColor="#6B7280"
-            value={locationName}
-            onChangeText={setLocationName}
-            style={styles.nameInput}
-          />
-        </View>
+          <Text style={styles.helper}>
+            Search above or tap anywhere on the map to place your pin.
+          </Text>
 
-        {!!locationAddress && (
-          <View style={styles.addressBox}>
-            <Text style={styles.addressLabel}>Selected address</Text>
-            <Text style={styles.addressText}>{locationAddress}</Text>
+          <MapView
+            ref={ref => {
+              // Store the map ref so the code can animate the map later
+              mapRef.current = ref;
+            }}
+            style={styles.map}
+            initialRegion={region}
+            onPress={handleMapPress}
+            onRegionChangeComplete={setRegion}
+            showsUserLocation={true}
+            showsMyLocationButton={true}
+          >
+            {markerCoords && <Marker coordinate={markerCoords} />}
+          </MapView>
+
+          <View style={styles.buttonRow}>
+            <Pressable style={styles.cancelButton} onPress={() => router.back()}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </Pressable>
+
+            <Pressable style={styles.confirmButton} onPress={handleConfirm}>
+              <Text style={styles.confirmButtonText}>Use This Location</Text>
+            </Pressable>
           </View>
-        )}
-
-        <Text style={styles.helper}>
-          Search above or tap anywhere on the map to place your pin.
-        </Text>
-
-        <MapView
-          ref={ref => {
-            // Store the map ref so the code can animate the map later
-            mapRef.current = ref;
-          }}
-          style={styles.map}
-          initialRegion={region}
-          onPress={handleMapPress}
-          onRegionChangeComplete={setRegion}
-          showsUserLocation={true}
-          showsMyLocationButton={true}
-        >
-          {markerCoords && <Marker coordinate={markerCoords} />}
-        </MapView>
-
-        <View style={styles.buttonRow}>
-          <Pressable style={styles.cancelButton} onPress={() => router.back()}>
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </Pressable>
-
-          <Pressable style={styles.confirmButton} onPress={handleConfirm}>
-            <Text style={styles.confirmButtonText}>Use This Location</Text>
-          </Pressable>
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 

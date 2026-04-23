@@ -36,6 +36,7 @@ import {
   TextInput,
   View
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type Message = {
   id: string;
@@ -1373,82 +1374,137 @@ function handleMemberLongPress(member: ClubMember) {
   );
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={80}
-    >
-      {(() => {
-        const ChatScreenContent = (
-          <View
-            style={[
-              styles.container,
-              chatBackgroundBase64 && { backgroundColor: "transparent" }
-            ]}
-          >
-            <View style={styles.headerTopRow}>
-              <Pressable
-                onPress={() =>
-                  router.push({
-                    pathname: "/club-info",
-                    params: { clubId: selectedClubId }
-                  })
-                }
-              >
-                <Image
-                  source={require("../assets/images/infoGraphic.png")}
-                  style={styles.infoImage}
-                  resizeMode="contain"
-                />
-              </Pressable>
+  <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === "ios" ? "padding" : "height"}
+    keyboardVerticalOffset={80}
+  >
+    {chatBackgroundBase64 ? (
+      <ImageBackground
+        source={{ uri: `data:image/jpeg;base64,${chatBackgroundBase64}` }}
+        style={styles.backgroundImage}
+        resizeMode="cover"
+      >
+        <View style={styles.screenOverlay}>
+          <SafeAreaView style={styles.safeAreaTransparent} edges={["top"]}>
+            <View
+              style={[
+                styles.container,
+                { backgroundColor: "transparent" }
+              ]}
+            >
+              <View style={styles.headerTopRow}>
+                <Pressable onPress={() => router.back()} style={styles.backButton}>
+                  <Text style={styles.backButtonArrow}>‹</Text>
+                </Pressable>
 
-              <Pressable
-                style={styles.headerCenterWrap}
-                onPress={() =>
-                  router.push({
-                    pathname: "/club-info",
-                    params: { clubId: userClubId }
-                  })
-                }
-              >
-                <View style={styles.headerBox}>
-                  <Text style={styles.clubHeader}>{clubName}</Text>
+                <Pressable
+                  onPress={() =>
+                    router.push({
+                      pathname: "/club-info",
+                      params: { clubId: selectedClubId }
+                    })
+                  }
+                >
+                  <Image
+                    source={require("../assets/images/infoGraphic.png")}
+                    style={styles.infoImage}
+                    resizeMode="contain"
+                  />
+                </Pressable>
 
-                  <Text style={styles.userHeader}>
-                    {userName} · {position}
-                  </Text>
-                </View>
-              </Pressable>
+                <Pressable
+                  style={styles.headerCenterWrap}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/club-info",
+                      params: { clubId: userClubId }
+                    })
+                  }
+                >
+                  <View style={styles.headerBox}>
+                    <Text style={styles.clubHeader}>{clubName}</Text>
+                    <Text style={styles.userHeader}>
+                      {userName} · {position}
+                    </Text>
+                  </View>
+                </Pressable>
 
-              <Pressable
-                onPress={() => setShowMembersModal(true)}
-                style={{ padding: 4 }}
-              >
-                <Image
-                  source={require("../assets/images/usersGraphic.png")}
-                  style={styles.clubHeaderImage}
-                  resizeMode="contain"
-                />
-              </Pressable>
+                <Pressable
+                  onPress={() => setShowMembersModal(true)}
+                  style={{ padding: 4 }}
+                >
+                  <Image
+                    source={require("../assets/images/usersGraphic.png")}
+                    style={styles.clubHeaderImage}
+                    resizeMode="contain"
+                  />
+                </Pressable>
+              </View>
+
+              <View style={styles.chatArea}>{ChatBody}</View>
             </View>
-            <View style={styles.chatArea}>{ChatBody}</View>
-          </View>
-        );
+          </SafeAreaView>
+        </View>
+      </ImageBackground>
+    ) : (
+      <SafeAreaView style={styles.safeAreaPlain} edges={["top"]}>
+        <View style={styles.container}>
+          <View style={styles.headerTopRow}>
+            <Pressable onPress={() => router.back()} style={styles.backButton}>
+              <Text style={styles.backButtonArrow}>‹</Text>
+            </Pressable>
 
-        return chatBackgroundBase64 ? (
-          <ImageBackground
-            source={{ uri: `data:image/jpeg;base64,${chatBackgroundBase64}` }}
-            style={{ flex: 1 }}
-            resizeMode="cover"
-          >
-            <View style={styles.screenOverlay}>{ChatScreenContent}</View>
-          </ImageBackground>
-        ) : (
-          ChatScreenContent
-        );
-      })()}
-    </KeyboardAvoidingView>
-  );
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: "/club-info",
+                  params: { clubId: selectedClubId }
+                })
+              }
+            >
+              <Image
+                source={require("../assets/images/infoGraphic.png")}
+                style={styles.infoImage}
+                resizeMode="contain"
+              />
+            </Pressable>
+
+            <Pressable
+              style={styles.headerCenterWrap}
+              onPress={() =>
+                router.push({
+                  pathname: "/club-info",
+                  params: { clubId: userClubId }
+                })
+              }
+            >
+              <View style={styles.headerBox}>
+                <Text style={styles.clubHeader}>{clubName}</Text>
+                <Text style={styles.userHeader}>
+                  {userName} · {position}
+                </Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setShowMembersModal(true)}
+              style={{ padding: 4 }}
+            >
+              <Image
+                source={require("../assets/images/usersGraphic.png")}
+                style={styles.clubHeaderImage}
+                resizeMode="contain"
+              />
+            </Pressable>
+          </View>
+
+          <View style={styles.chatArea}>{ChatBody}</View>
+        </View>
+      </SafeAreaView>
+    )}
+  </KeyboardAvoidingView>
+);
 }
 
 const styles = StyleSheet.create({
@@ -1774,7 +1830,7 @@ const styles = StyleSheet.create({
   infoImage: {
     width: 52,
     height: 52,
-    marginLeft: 5
+    marginLeft: 10
   },
   headerTextWrap: {
     alignItems: "flex-start"
@@ -1912,6 +1968,41 @@ headerBox: {
   paddingHorizontal: 10,
   paddingVertical: 3,
   borderRadius: 10,
-  alignItems: "center"
+  marginRight: 5
+  // alignItems: "center"
+},
+safeArea: {
+  flex: 1,
+  backgroundColor: "white"
+},
+
+backgroundImage: {
+  flex: 1
+},
+
+backButton: {
+  flexDirection: "row",
+  alignItems: "center",
+  paddingHorizontal: 6,
+  borderRadius: 999,
+  backgroundColor: "#EFF6FF",
+  borderWidth: 1,
+  borderColor: "#BFDBFE"  
+},
+
+backButtonArrow: {
+  fontSize: 28,
+  lineHeight: 28,
+  color: "#365E95",
+  fontWeight: "600"
+},
+safeAreaTransparent: {
+  flex: 1,
+  backgroundColor: "transparent"
+  },
+
+safeAreaPlain: {
+  flex: 1,
+  backgroundColor: "white"
 },
 });

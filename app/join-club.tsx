@@ -18,6 +18,7 @@ import {
   TextInput,
   View
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const POSITION_OPTIONS = [
   "New Member",
@@ -27,7 +28,7 @@ const POSITION_OPTIONS = [
 ] as const;
 
 const SORT_OPTIONS = [
-  "Alphabetical",
+  "A-Z",
   "Members"
 ] as const;
 
@@ -54,10 +55,10 @@ export default function JoinClubScreen() {
   const [pendingClubRequests, setPendingClubRequests] = useState<string[]>([]);
   const [positionOpenClubId, setPositionOpenClubId] = useState<string | null>(null);
 
-  const [selectedSort, setSelectedSort] = useState<SortOption>("Alphabetical");
+  const [selectedSort, setSelectedSort] = useState<SortOption>("A-Z");
   const [selectedClubFilter, setSelectedClubFilter] =
     useState<ClubFilterOption>("All Clubs");
-  const [selectedBadgeFilter, setSelectedBadgeFilter] = useState("All Focuses");
+  const [selectedBadgeFilter, setSelectedBadgeFilter] = useState("All");
 
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
   const [showDropdownOpen, setShowDropdownOpen] = useState(false);
@@ -134,15 +135,15 @@ export default function JoinClubScreen() {
       });
     });
 
-    return ["All Focuses", ...Array.from(badgeMap.values()).sort((a, b) => a.localeCompare(b))];
+    return ["All", ...Array.from(badgeMap.values()).sort((a, b) => a.localeCompare(b))];
   }, [allClubs]);
 
   useEffect(() => {
     if (
-      selectedBadgeFilter !== "All Focuses" &&
+      selectedBadgeFilter !== "All" &&
       !badgeOptions.includes(selectedBadgeFilter)
     ) {
-      setSelectedBadgeFilter("All Focuses");
+      setSelectedBadgeFilter("All");
     }
   }, [badgeOptions, selectedBadgeFilter]);
 
@@ -156,7 +157,6 @@ export default function JoinClubScreen() {
 
     let results = [...allClubs];
 
-    // Filter by join status
     if (selectedClubFilter === "Joined Clubs") {
       results = results.filter(club => joinedClubIds.includes(club.id));
     } else if (selectedClubFilter === "Clubs Not Joined") {
@@ -164,7 +164,7 @@ export default function JoinClubScreen() {
     }
 
     // Filter by selected focus badge
-    if (selectedBadgeFilter !== "All Focuses") {
+    if (selectedBadgeFilter !== "All") {
       results = results.filter(club => {
         const focusBadges = Array.isArray(club.focusBadges) ? club.focusBadges : [];
         return focusBadges.some(
@@ -300,195 +300,208 @@ export default function JoinClubScreen() {
   }
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={styles.title}>Join a Club</Text>
-
-      <TextInput
-        placeholder="Search clubs"
-        placeholderTextColor="#4B5563"
-        value={searchText}
-        onChangeText={setSearchText}
-        autoCapitalize="characters"
-        style={styles.input}
-        onFocus={closeTopDropdowns}
-      />
-
-      <View style={styles.topFiltersRow}>
-        <View style={styles.dropdownWrap}>
-          <Text style={styles.dropdownLabel}>Sort</Text>
-          <Pressable
-            style={styles.dropdownButton}
-            onPress={() => {
-              // Toggle sort dropdown and close the others
-              setSortDropdownOpen(prev => !prev);
-              setShowDropdownOpen(false);
-              setBadgeDropdownOpen(false);
-            }}
-          >
-            <Text style={styles.dropdownButtonText}>{selectedSort}</Text>
-            <Text style={styles.dropdownArrow}>{sortDropdownOpen ? "▲" : "▼"}</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#dbeafe" }} edges={["top"]}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.headerRow}>
+          <Pressable style={styles.backButton} onPress={() => router.back()}>
+            <Text style={styles.backButtonArrow}>‹</Text>
           </Pressable>
 
-          {sortDropdownOpen && (
-            <View style={styles.dropdownMenu}>
-              {SORT_OPTIONS.map(option => {
-                const isSelected = selectedSort === option;
+          <Text style={styles.title}>Join a Club</Text>
 
-                return (
-                  <Pressable
-                    key={option}
-                    style={[
-                      styles.dropdownOption,
-                      isSelected && styles.dropdownOptionSelected
-                    ]}
-                    onPress={() => {
-                      // Save selected sort option and close the menu
-                      setSelectedSort(option);
-                      setSortDropdownOpen(false);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.dropdownOptionText,
-                        isSelected && styles.dropdownOptionTextSelected
-                      ]}
-                    >
-                      {option}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
+          <View style={styles.headerRightSpacer} />
         </View>
 
-        <View style={styles.dropdownWrap}>
-          <Text style={styles.dropdownLabel}>Show</Text>
-          <Pressable
-            style={styles.dropdownButton}
-            onPress={() => {
-              // Toggle club-status dropdown and close the others
-              setShowDropdownOpen(prev => !prev);
-              setSortDropdownOpen(false);
-              setBadgeDropdownOpen(false);
-            }}
-          >
-            <Text style={styles.dropdownButtonText}>{selectedClubFilter}</Text>
-            <Text style={styles.dropdownArrow}>{showDropdownOpen ? "▲" : "▼"}</Text>
-          </Pressable>
+        <Text style={styles.subtitle}>Find clubs that match your interests</Text>
 
-          {showDropdownOpen && (
-            <View style={styles.dropdownMenu}>
-              {CLUB_FILTER_OPTIONS.map(option => {
-                const isSelected = selectedClubFilter === option;
+        <TextInput
+          placeholder="Search clubs"
+          placeholderTextColor="#4B5563"
+          value={searchText}
+          onChangeText={setSearchText}
+          autoCapitalize="characters"
+          style={styles.input}
+          onFocus={closeTopDropdowns}
+        />
 
-                return (
-                  <Pressable
-                    key={option}
-                    style={[
-                      styles.dropdownOption,
-                      isSelected && styles.dropdownOptionSelected
-                    ]}
-                    onPress={() => {
-                      // Save selected club filter and close the menu
-                      setSelectedClubFilter(option);
-                      setShowDropdownOpen(false);
-                    }}
-                  >
-                    <Text
+        <View style={styles.topFiltersRow}>
+          <View style={styles.dropdownWrap}>
+            <Text style={styles.dropdownLabel}>Sort</Text>
+            <Pressable
+              style={styles.dropdownButton}
+              onPress={() => {
+                setSortDropdownOpen(prev => !prev);
+                setShowDropdownOpen(false);
+                setBadgeDropdownOpen(false);
+              }}
+            >
+              <Text style={styles.dropdownButtonText}>{selectedSort}</Text>
+              <Text style={styles.dropdownArrow}>{sortDropdownOpen ? "▲" : "▼"}</Text>
+            </Pressable>
+
+            {sortDropdownOpen && (
+              <View style={styles.dropdownMenu}>
+                {SORT_OPTIONS.map(option => {
+                  const isSelected = selectedSort === option;
+
+                  return (
+                    <Pressable
+                      key={option}
                       style={[
-                        styles.dropdownOptionText,
-                        isSelected && styles.dropdownOptionTextSelected
+                        styles.dropdownOption,
+                        isSelected && styles.dropdownOptionSelected
                       ]}
+                      onPress={() => {
+                        setSelectedSort(option);
+                        setSortDropdownOpen(false);
+                      }}
                     >
-                      {option}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-        </View>
+                      <Text
+                        style={[
+                          styles.dropdownOptionText,
+                          isSelected && styles.dropdownOptionTextSelected
+                        ]}
+                      >
+                        {option}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
 
-        <View style={styles.dropdownWrap}>
-          <Text style={styles.dropdownLabel}>Focus</Text>
-          <Pressable
-            style={styles.dropdownButton}
-            onPress={() => {
-              // Toggle focus-badge dropdown and close the others
-              setBadgeDropdownOpen(prev => !prev);
-              setSortDropdownOpen(false);
-              setShowDropdownOpen(false);
-            }}
-          >
-            <Text style={styles.dropdownButtonText} numberOfLines={1}>
-              {selectedBadgeFilter}
-            </Text>
-            <Text style={styles.dropdownArrow}>{badgeDropdownOpen ? "▲" : "▼"}</Text>
-          </Pressable>
+          <View style={styles.dropdownWrap}>
+            <Text style={styles.dropdownLabel}>Show</Text>
+            <Pressable
+              style={styles.dropdownButton}
+              onPress={() => {
+                setShowDropdownOpen(prev => !prev);
+                setSortDropdownOpen(false);
+                setBadgeDropdownOpen(false);
+              }}
+            >
+              <Text style={styles.dropdownButtonText}>{selectedClubFilter}</Text>
+              <Text style={styles.dropdownArrow}>{showDropdownOpen ? "▲" : "▼"}</Text>
+            </Pressable>
 
-          {badgeDropdownOpen && (
-            <View style={styles.dropdownMenu}>
-              {badgeOptions.map(option => {
-                const isSelected = selectedBadgeFilter === option;
+            {showDropdownOpen && (
+              <View style={styles.dropdownMenu}>
+                {CLUB_FILTER_OPTIONS.map(option => {
+                  const isSelected = selectedClubFilter === option;
 
-                return (
-                  <Pressable
-                    key={option}
-                    style={[
-                      styles.dropdownOption,
-                      isSelected && styles.dropdownOptionSelected
-                    ]}
-                    onPress={() => {
-                      // Save selected badge filter and close the menu
-                      setSelectedBadgeFilter(option);
-                      setBadgeDropdownOpen(false);
-                    }}
-                  >
-                    <Text
+                  return (
+                    <Pressable
+                      key={option}
                       style={[
-                        styles.dropdownOptionText,
-                        isSelected && styles.dropdownOptionTextSelected
+                        styles.dropdownOption,
+                        isSelected && styles.dropdownOptionSelected
                       ]}
+                      onPress={() => {
+                        setSelectedClubFilter(option);
+                        setShowDropdownOpen(false);
+                      }}
                     >
-                      {option}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
-        </View>
-      </View>
+                      <Text
+                        style={[
+                          styles.dropdownOptionText,
+                          isSelected && styles.dropdownOptionTextSelected
+                        ]}
+                      >
+                        {option}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
 
-      <Text style={styles.searchHint}>
-        {clubResults.length} club{clubResults.length === 1 ? "" : "s"} shown
-      </Text>
-
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      {clubResults.map(clubResult => {
-        const currentClubAlreadyRequested = pendingClubRequests.includes(clubResult.id);
-        const currentClubAlreadyJoined = joinedClubIds.includes(clubResult.id);
-        const positionOpen = positionOpenClubId === clubResult.id;
-        const memberCount = Array.isArray(clubResult.members)
-          ? clubResult.members.length
-          : 0;
-        const focusBadges = Array.isArray(clubResult.focusBadges)
-          ? clubResult.focusBadges.filter((badge: any) => typeof badge === "string" && badge.trim())
-          : [];
-
-        return (
-          <View key={clubResult.id} style={styles.result}>
-            <View>
-              <Text style={styles.clubName}>{clubResult.name}</Text>
-              <Text style={styles.clubCode}>
-                Code: {clubResult.clubCode || "No Code"}
+          <View style={styles.dropdownWrap}>
+            <Text style={styles.dropdownLabel}>Focus</Text>
+            <Pressable
+              style={styles.dropdownButton}
+              onPress={() => {
+                setBadgeDropdownOpen(prev => !prev);
+                setSortDropdownOpen(false);
+                setShowDropdownOpen(false);
+              }}
+            >
+              <Text style={styles.dropdownButtonText} numberOfLines={1}>
+                {selectedBadgeFilter}
               </Text>
+              <Text style={styles.dropdownArrow}>{badgeDropdownOpen ? "▲" : "▼"}</Text>
+            </Pressable>
+
+            {badgeDropdownOpen && (
+              <View style={styles.dropdownMenu}>
+                {badgeOptions.map(option => {
+                  const isSelected = selectedBadgeFilter === option;
+
+                  return (
+                    <Pressable
+                      key={option}
+                      style={[
+                        styles.dropdownOption,
+                        isSelected && styles.dropdownOptionSelected
+                      ]}
+                      onPress={() => {
+                        setSelectedBadgeFilter(option);
+                        setBadgeDropdownOpen(false);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.dropdownOptionText,
+                          isSelected && styles.dropdownOptionTextSelected
+                        ]}
+                      >
+                        {option}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        </View>
+
+        <Text style={styles.searchHint}>
+          {clubResults.length} club{clubResults.length === 1 ? "" : "s"} shown
+        </Text>
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        {clubResults.map(clubResult => {
+          const currentClubAlreadyRequested = pendingClubRequests.includes(clubResult.id);
+          const currentClubAlreadyJoined = joinedClubIds.includes(clubResult.id);
+          const positionOpen = positionOpenClubId === clubResult.id;
+          const memberCount = Array.isArray(clubResult.members)
+            ? clubResult.members.length
+            : 0;
+          const focusBadges = Array.isArray(clubResult.focusBadges)
+            ? clubResult.focusBadges.filter(
+                (badge: any) => typeof badge === "string" && badge.trim()
+              )
+            : [];
+
+          return (
+            <View key={clubResult.id} style={styles.result}>
+              <View style={styles.cardAccent} />
+
+              <View style={styles.cardHeaderRow}>
+                <Text style={styles.clubName}>{clubResult.name}</Text>
+                <View style={styles.codePill}>
+                  <Text style={styles.codePillText}>
+                    Code: {clubResult.clubCode || "No Code"}
+                  </Text>
+                </View>
+              </View>
+
               <Text style={styles.memberCount}>Members: {memberCount}</Text>
 
               {!!focusBadges.length && (
@@ -500,119 +513,161 @@ export default function JoinClubScreen() {
                   ))}
                 </View>
               )}
-            </View>
 
-            {currentClubAlreadyJoined ? (
-              <Text style={styles.pendingText}>
-                You are already in this club.
-              </Text>
-            ) : currentClubAlreadyRequested ? (
-              <Text style={styles.pendingText}>
-                Request sent. Waiting for approval.
-              </Text>
-            ) : (
-              <>
-                <Pressable
-                  style={styles.positionHeader}
-                  onPress={() => {
-                    // Close top dropdowns before opening the position selector
-                    closeTopDropdowns();
-
-                    // Toggle the current club's position picker
-                    if (positionOpen) {
-                      setPositionOpenClubId(null);
-                    } else {
-                      setPositionOpenClubId(clubResult.id);
-                      setSelectedPosition("");
-                      setOtherPosition("");
-                    }
-                  }}
-                >
-                  <Text style={styles.positionTitle}>
-                    Choose your position {positionOpen ? "▲" : "▼"}
+              {currentClubAlreadyJoined ? (
+                <View style={styles.statusBox}>
+                  <Text style={styles.pendingText}>
+                    You are already in this club.
                   </Text>
-                </Pressable>
+                </View>
+              ) : currentClubAlreadyRequested ? (
+                <View style={styles.statusBox}>
+                  <Text style={styles.pendingText}>
+                    Request sent. Waiting for approval.
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.actionSection}>
+                    <Pressable
+                      style={styles.positionHeader}
+                      onPress={() => {
+                        closeTopDropdowns();
 
-                {positionOpen && (
-                  <View style={styles.positionOptionsWrap}>
-                    {POSITION_OPTIONS.map(option => {
-                      const isSelected = selectedPosition === option;
+                        if (positionOpen) {
+                          setPositionOpenClubId(null);
+                        } else {
+                          setPositionOpenClubId(clubResult.id);
+                          setSelectedPosition("");
+                          setOtherPosition("");
+                        }
+                      }}
+                    >
+                      <Text style={styles.positionTitle}>Choose your position</Text>
+                      <Text style={styles.positionArrow}>
+                        {positionOpen ? "▲" : "▼"}
+                      </Text>
+                    </Pressable>
 
-                      return (
-                        <Pressable
-                          key={option}
-                          style={[
-                            styles.positionOption,
-                            isSelected && styles.positionOptionSelected
-                          ]}
-                          onPress={() => {
-                            // Save selected position and clear custom text unless "Other Position" is chosen
-                            setSelectedPosition(option);
-                            if (option !== "Other Position") {
-                              setOtherPosition("");
-                            }
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.positionOptionText,
-                              isSelected && styles.positionOptionTextSelected
-                            ]}
-                          >
-                            {option}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
+                    {positionOpen && (
+                      <View style={styles.positionOptionsWrap}>
+                        {POSITION_OPTIONS.map(option => {
+                          const isSelected = selectedPosition === option;
+
+                          return (
+                            <Pressable
+                              key={option}
+                              style={[
+                                styles.positionOption,
+                                isSelected && styles.positionOptionSelected
+                              ]}
+                              onPress={() => {
+                                setSelectedPosition(option);
+                                if (option !== "Other Position") {
+                                  setOtherPosition("");
+                                }
+                              }}
+                            >
+                              <Text
+                                style={[
+                                  styles.positionOptionText,
+                                  isSelected && styles.positionOptionTextSelected
+                                ]}
+                              >
+                                {option}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    )}
+
+                    {positionOpen && selectedPosition === "Other Position" && (
+                      <TextInput
+                        placeholder="Enter your position"
+                        placeholderTextColor="#4B5563"
+                        value={otherPosition}
+                        onChangeText={setOtherPosition}
+                        style={styles.otherPositionInput}
+                      />
+                    )}
                   </View>
-                )}
 
-                {positionOpen && selectedPosition === "Other Position" && (
-                  <TextInput
-                    placeholder="Enter your position"
-                    placeholderTextColor="#4B5563"
-                    value={otherPosition}
-                    onChangeText={setOtherPosition}
-                    style={styles.input}
-                  />
-                )}
-
-                <Pressable
-                  style={styles.joinButton}
-                  onPress={() => sendJoinRequest(clubResult)}
-                >
-                  <Text style={styles.joinText}>Send Join Request</Text>
-                </Pressable>
-              </>
-            )}
-          </View>
-        );
-      })}
-    </ScrollView>
+                  <Pressable
+                    style={styles.joinButton}
+                    onPress={() => sendJoinRequest(clubResult)}
+                  >
+                    <Text style={styles.joinText}>Send Join Request</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          );
+        })}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "white"
+    backgroundColor: "#dbeafe"
   },
   contentContainer: {
     padding: 24,
-    paddingBottom: 120
+    paddingBottom: 120,
+  },
+  topBar: {
+    alignItems: "flex-start",
+    marginBottom: 8
+  },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE"
+  },
+  backButtonArrow: {
+    fontSize: 22,
+    lineHeight: 22,
+    color: "#365E95",
+    marginRight: 4,
+    fontWeight: "600"
+  },
+  backButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#365E95"
   },
   title: {
     fontSize: 20,
     fontWeight: "600",
-    marginBottom: 16,
-    textAlign: "center"
+    textAlign: "center",
+    color: "#111827"
+  },
+  subtitle: {
+    fontSize: 15,
+    color: "#64748B",
+    textAlign: "center",
+    marginBottom: 18
   },
   input: {
     borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
+    borderColor: "#D6DEEB",
+    borderRadius: 12,
     padding: 12,
-    marginBottom: 12
+    marginBottom: 12,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#7C8FB5",
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2
   },
   topFiltersRow: {
     flexDirection: "row",
@@ -630,24 +685,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#111827",
-    marginBottom: 8
+    marginBottom: 8,
+    marginLeft: 8
   },
   dropdownButton: {
     minHeight: 46,
     borderWidth: 1,
     borderColor: "#D1D5DB",
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 11,
     backgroundColor: "#FFFFFF",
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between"
+    justifyContent: "space-between",
+    shadowColor: "#7C8FB5",
+    shadowOpacity: 0.05,
+    shadowRadius: 7,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2
   },
   dropdownButtonText: {
     color: "#111827",
     fontWeight: "500",
-    fontSize: 7,
+    fontSize: 12,
     flex: 1,
     marginRight: 10
   },
@@ -661,10 +722,10 @@ const styles = StyleSheet.create({
     top: 78,
     left: 0,
     right: 0,
-    backgroundColor: "white",
+    backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "#D1D5DB",
-    borderRadius: 10,
+    borderRadius: 12,
     zIndex: 2000,
     shadowColor: "#000",
     shadowOpacity: 0.08,
@@ -676,14 +737,14 @@ const styles = StyleSheet.create({
   dropdownOption: {
     paddingVertical: 12,
     paddingHorizontal: 12,
-    backgroundColor: "white"
+    backgroundColor: "#FFFFFF"
   },
   dropdownOptionSelected: {
     backgroundColor: "#EEF2FF"
   },
   dropdownOptionText: {
     color: "#111827",
-    fontWeight: "500", 
+    fontWeight: "500",
     fontSize: 9
   },
   dropdownOptionTextSelected: {
@@ -693,7 +754,6 @@ const styles = StyleSheet.create({
   searchHint: {
     textAlign: "center",
     color: "#6B7280",
-    marginBottom: 12,
     marginTop: 6
   },
   error: {
@@ -705,19 +765,50 @@ const styles = StyleSheet.create({
     marginTop: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8
+    borderColor: "#DCE6F5",
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#6B7FA5",
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
+    overflow: "hidden"
   },
-  clubName: {
-    fontSize: 16,
-    fontWeight: "600",
+  cardAccent: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 6,
+    backgroundColor: "#7B97D4"
+  },
+  cardHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 4,
     marginBottom: 8
   },
-  clubCode: {
-    fontSize: 13,
-    color: "#6B7280",
-    marginTop: -4,
-    marginBottom: 4
+  clubName: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#111827"
+  },
+  codePill: {
+    backgroundColor: "#EEF4FF",
+    borderWidth: 1,
+    borderColor: "#D4E0F6",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999
+  },
+  codePillText: {
+    color: "#365E95",
+    fontWeight: "600",
+    fontSize: 11
   },
   memberCount: {
     fontSize: 13,
@@ -728,15 +819,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     marginTop: 2,
-    marginBottom: 4
+    marginBottom: 8
   },
   badge: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "#EEF2FF",
+    backgroundColor: "#EEF4FF",
     borderWidth: 1,
-    borderColor: "#C7D2FE",
+    borderColor: "#D6E2FA",
     marginRight: 8,
     marginBottom: 8
   },
@@ -745,14 +836,48 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 12
   },
+  statusBox: {
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginTop: 4
+  },
+  pendingText: {
+    marginTop: 0,
+    textAlign: "center",
+    color: "#6B7280",
+    fontSize: 14
+  },
+  actionSection: {
+    backgroundColor: "#F8FBFF",
+    borderWidth: 1,
+    borderColor: "#DCE6F5",
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12
+  },
+  positionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 0
+  },
   positionTitle: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#111827",
-    marginBottom: 10
+    color: "#111827"
+  },
+  positionArrow: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#6B7280"
   },
   positionOptionsWrap: {
-    marginBottom: 12
+    marginTop: 12,
+    marginBottom: 0
   },
   positionOption: {
     borderWidth: 1,
@@ -761,7 +886,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 12,
     marginBottom: 10,
-    backgroundColor: "white"
+    backgroundColor: "#FFFFFF"
   },
   positionOptionSelected: {
     backgroundColor: "#7b97d4",
@@ -773,25 +898,39 @@ const styles = StyleSheet.create({
     fontWeight: "500"
   },
   positionOptionTextSelected: {
-    color: "white",
+    color: "#FFFFFF",
     fontWeight: "600"
   },
+  otherPositionInput: {
+    borderWidth: 1,
+    borderColor: "#D6DEEB",
+    borderRadius: 10,
+    padding: 12,
+    backgroundColor: "#FFFFFF",
+    marginTop: 4
+  },
   joinButton: {
-    backgroundColor: "#222",
+    backgroundColor: "#6B7FA5",
     padding: 10,
-    borderRadius: 6
+    borderRadius: 10,
+    shadowColor: "#365E95",
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2
   },
   joinText: {
-    color: "white",
-    textAlign: "center"
-  },
-  pendingText: {
-    marginTop: 12,
+    color: "#FFFFFF",
     textAlign: "center",
-    color: "#6B7280",
-    fontSize: 14
+    fontWeight: "600"
   },
-  positionHeader: {
-    marginBottom: 10
+  headerRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  marginBottom: 6,
+  },
+  headerRightSpacer: {
+    width: 28, // same width as back button to keep title centered
   }
 });

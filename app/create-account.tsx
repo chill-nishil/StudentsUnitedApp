@@ -17,6 +17,7 @@ import {
   TouchableWithoutFeedback,
   View
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function CreateAccountScreen() {
   const [name, setName] = useState("");
@@ -86,90 +87,92 @@ export default function CreateAccountScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={80}
-    >
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <ScrollView
-          contentContainerStyle={styles.container}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Image
-            source={require("../assets/images/logo.png")}
-            style={styles.logo}
-          />
-
-          <Text style={styles.title}>Create Account</Text>
-
-          <TextInput
-            placeholder="Full name"
-            placeholderTextColor="#6B7280"
-            value={name}
-            onChangeText={setName}
-            style={styles.input}
-          />
-
-          <TextInput
-            placeholder="Email"
-            placeholderTextColor="#6B7280"
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            style={styles.input}
-          />
-
-          <View style={styles.passwordContainer}>
-            <TextInput
-              placeholder="Create password (6+ characters)"
-              placeholderTextColor="#6B7280"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              style={styles.passwordInput}
-            />
-
-            <Pressable onPress={() => setShowPassword(!showPassword)}>
-              <Ionicons
-                name={showPassword ? "eye-off" : "eye"}
-                size={22}
-                color="#6B7280"
-              />
-            </Pressable>
-          </View>
-
-          <View style={styles.passwordContainer}>
-            <TextInput
-              placeholder="Confirm password"
-              placeholderTextColor="#6B7280"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry={!showPassword}
-              style={styles.passwordInput}
-            />
-
-            <Pressable onPress={() => setShowPassword(!showPassword)}>
-              <Ionicons
-                name={showPassword ? "eye-off" : "eye"}
-                size={22}
-                color="#6B7280"
-              />
-            </Pressable>
-          </View>
-
-          <Pressable
-            style={[styles.button, loading && styles.disabled]}
-            onPress={handleCreateAccount}
-            disabled={loading}
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#dbeafe" }} edges={["top"]}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={80}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <ScrollView
+            contentContainerStyle={styles.container}
+            keyboardShouldPersistTaps="handled"
           >
-            <Text style={styles.buttonText}>
-              {loading ? "Creating account..." : "Create Account"}
-            </Text>
-          </Pressable>
-        </ScrollView>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+            <Image
+              source={require("../assets/images/logo.png")}
+              style={styles.logo}
+            />
+
+            <Text style={styles.title}>Create Account</Text>
+
+            <TextInput
+              placeholder="Full name"
+              placeholderTextColor="#6B7280"
+              value={name}
+              onChangeText={setName}
+              style={styles.input}
+            />
+
+            <TextInput
+              placeholder="Email"
+              placeholderTextColor="#6B7280"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              style={styles.input}
+            />
+
+            <View style={styles.passwordContainer}>
+              <TextInput
+                placeholder="Create password (6+ characters)"
+                placeholderTextColor="#6B7280"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                style={styles.passwordInput}
+              />
+
+              <Pressable onPress={() => setShowPassword(!showPassword)}>
+                <Ionicons
+                  name={showPassword ? "eye-off" : "eye"}
+                  size={22}
+                  color="#6B7280"
+                />
+              </Pressable>
+            </View>
+
+            <View style={styles.passwordContainer}>
+              <TextInput
+                placeholder="Confirm password"
+                placeholderTextColor="#6B7280"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry={!showPassword}
+                style={styles.passwordInput}
+              />
+
+              <Pressable onPress={() => setShowPassword(!showPassword)}>
+                <Ionicons
+                  name={showPassword ? "eye-off" : "eye"}
+                  size={22}
+                  color="#6B7280"
+                />
+              </Pressable>
+            </View>
+
+            <Pressable
+              style={[styles.button, loading && styles.disabled]}
+              onPress={handleCreateAccount}
+              disabled={loading}
+            >
+              <Text style={styles.buttonText}>
+                {loading ? "Creating account..." : "Create Account"}
+              </Text>
+            </Pressable>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 

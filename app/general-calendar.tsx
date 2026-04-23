@@ -27,6 +27,7 @@ import {
   View
 } from "react-native";
 import { Calendar } from "react-native-calendars";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type Attendee = {
   uid: string;
@@ -102,6 +103,8 @@ export default function GeneralCalendarScreen() {
   const [calendarPermissionGranted, setCalendarPermissionGranted] = useState(false);
   const [isLoadingPhoneEvents, setIsLoadingPhoneEvents] = useState(false);
 
+  const [expandedEventIds, setExpandedEventIds] = useState<string[]>([]);
+
   useEffect(() => {
     const auth = getAuth();
 
@@ -161,7 +164,6 @@ export default function GeneralCalendarScreen() {
       return;
     }
 
-    // Listen to clubs collection and build a name lookup only for clubs this user belongs to
     const unsubClubs = onSnapshot(collection(db, "clubs"), snapshot => {
       const nextMap: Record<string, string> = {};
 
@@ -214,7 +216,6 @@ export default function GeneralCalendarScreen() {
             attendees: Array.isArray(data.attendees) ? data.attendees : []
           };
         })
-        // Only keep events that belong to one of the user's clubs
         .filter(event => !!event.clubId && userClubIds.includes(event.clubId));
 
       setEvents(list);
@@ -239,7 +240,6 @@ export default function GeneralCalendarScreen() {
   }, [showPhoneCalendarEvents, calendarPermissionGranted, visibleMonth]);
 
   const userClubOptions = useMemo(() => {
-    // Build dropdown options for only the user's clubs
     return userClubIds.map(clubId => ({
       id: clubId,
       name: clubNamesById[clubId] || "Unknown Club"
@@ -260,7 +260,6 @@ export default function GeneralCalendarScreen() {
 
     const role = String(membership?.position || "").trim().toLowerCase();
 
-    // Only presidents and board members can add events
     return role === "president" || role === "board member";
   }, [clubMemberships, selectedClubFilter]);
 
@@ -312,7 +311,6 @@ export default function GeneralCalendarScreen() {
   };
 
   const getClubEventDateText = (dateValue: any) => {
-    // Format the club event date for display
     const safeDate = getFirestoreDate(dateValue);
     if (!safeDate) return "";
     return safeDate.toLocaleDateString();
@@ -344,7 +342,6 @@ export default function GeneralCalendarScreen() {
   };
 
   const getPhoneEventDateText = (item: PhoneCalendarEvent) => {
-    // Format phone calendar event date for display
     return item.startDate.toLocaleDateString();
   };
 
@@ -391,7 +388,6 @@ export default function GeneralCalendarScreen() {
   };
 
   const isAttendingEvent = (item: ClubEvent) => {
-    // Check if the current user is already in the attendee list
     return !!item.attendees?.some(attendee => attendee.uid === currentUid);
   };
 
@@ -481,13 +477,11 @@ export default function GeneralCalendarScreen() {
         ExpoCalendar.EntityTypes.EVENT
       );
 
-      // Only keep iPhone (iCloud) calendars
       const iCloudCalendars = calendars.filter(cal =>
         ["iCloud", "Default", "Calendar"].includes(cal.source?.name || "")
       );
 
       const calendarIds = iCloudCalendars.map(calendarItem => calendarItem.id);
-
 
       if (calendarIds.length === 0) {
         setPhoneCalendarEvents([]);
@@ -533,7 +527,6 @@ export default function GeneralCalendarScreen() {
             return false;
           }
 
-          // Only keep today and future events
           const normalizedStart = new Date(item.startDate);
           normalizedStart.setHours(0, 0, 0, 0);
 
@@ -590,7 +583,6 @@ export default function GeneralCalendarScreen() {
   today.setHours(0, 0, 0, 0);
 
   const upcomingClubFilteredEvents = clubFilteredEvents.filter(event => {
-    // Only keep today and future club events
     const eventDate = getClubEventBaseDate(event);
 
     if (!eventDate) return false;
@@ -607,7 +599,6 @@ export default function GeneralCalendarScreen() {
 
   const markedDates: any = {};
 
-  // Add blue dots for club events
   upcomingClubFilteredEvents.forEach(event => {
     const eventDate = getClubEventBaseDate(event);
     if (!eventDate) return;
@@ -624,7 +615,6 @@ export default function GeneralCalendarScreen() {
     });
   });
 
-  // Add gray dots for phone calendar events
   visiblePhoneEvents.forEach(event => {
     const dateStr = event.startDate.toISOString().split("T")[0];
 
@@ -661,7 +651,6 @@ export default function GeneralCalendarScreen() {
       sortDate: getClubEventSortDate(event),
       data: event
     })),
-
     ...filteredPhoneEvents.map(event => ({
       source: "phone" as const,
       sortDate: event.startDate,
@@ -682,283 +671,319 @@ export default function GeneralCalendarScreen() {
     };
   }
 
+  const toggleExpandedEvent = (eventId: string) => {
+    setExpandedEventIds(prev =>
+      prev.includes(eventId)
+        ? prev.filter(id => id !== eventId)
+        : [...prev, eventId]
+    );
+  };
+
   return (
-    <>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.header}>Calendar</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#dbeafe" }} edges={["top"]}>
+      <>
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.contentContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.header}>Calendar</Text>
 
-        <Calendar
-          markingType="multi-dot"
-          markedDates={markedDates}
-          enableSwipeMonths={true}
-          onDayPress={day => {
-            // Tap once to filter by day, tap again to clear the selection
-            setSelectedDate(prev =>
-              prev === day.dateString ? "" : day.dateString
-            );
-          }}
-          onMonthChange={month => {
-            // Update the visible month so phone events reload for that month
-            setVisibleMonth(new Date(month.year, month.month - 1, 1));
-          }}
-        />
+          <Calendar
+            markingType="multi-dot"
+            markedDates={markedDates}
+            enableSwipeMonths={true}
+            onDayPress={day => {
+              setSelectedDate(prev =>
+                prev === day.dateString ? "" : day.dateString
+              );
+            }}
+            onMonthChange={month => {
+              setVisibleMonth(new Date(month.year, month.month - 1, 1));
+            }}
+          />
 
-        <View style={styles.listHeader}>
-          <Text style={styles.subHeader}>
-            {selectedDate
-              ? `Events on ${selectedDate}`
-              : selectedClubFilter === "all"
-              ? "Upcoming Events"
-              : `Upcoming ${selectedClubName} Events`}
-          </Text>
+          <View style={styles.listHeader}>
+            <Text style={styles.subHeader}>Upcoming Events</Text>
 
-          <View style={styles.rightHeaderControls}>
-            <View style={styles.dropdownWrap}>
-              <Pressable
-                style={styles.dropdownButton}
-                onPress={() => setClubDropdownOpen(prev => !prev)}
-              >
-                <Text style={styles.dropdownButtonText} numberOfLines={1}>
-                  {selectedClubName}
-                </Text>
-                <Text style={styles.dropdownArrow}>
-                  {clubDropdownOpen ? "▲" : "▼"}
-                </Text>
-              </Pressable>
+            <View style={styles.rightHeaderControls}>
+              <View style={styles.dropdownWrap}>
+                <Pressable
+                  style={styles.dropdownButton}
+                  onPress={() => setClubDropdownOpen(prev => !prev)}
+                >
+                  <Text style={styles.dropdownButtonText} numberOfLines={1}>
+                    {selectedClubName}
+                  </Text>
+                  <Text style={styles.dropdownArrow}>
+                    {clubDropdownOpen ? "▲" : "▼"}
+                  </Text>
+                </Pressable>
 
-              {clubDropdownOpen && (
-                <View style={styles.dropdownMenu}>
-                  <Pressable
-                    style={styles.dropdownOption}
-                    onPress={() => {
-                      setSelectedClubFilter("all");
-                      selectedClubRef.current = "all";
-                      setClubDropdownOpen(false);
-                    }}
-                  >
-                    <Text style={styles.dropdownOptionText}>All Clubs</Text>
-                  </Pressable>
-
-                  {userClubOptions.map(club => (
+                {clubDropdownOpen && (
+                  <View style={styles.dropdownMenu}>
                     <Pressable
-                      key={club.id}
                       style={styles.dropdownOption}
                       onPress={() => {
-                        setSelectedClubFilter(club.id);
-                        selectedClubRef.current = club.id;
+                        setSelectedClubFilter("all");
+                        selectedClubRef.current = "all";
                         setClubDropdownOpen(false);
                       }}
                     >
-                      <Text style={styles.dropdownOptionText}>{club.name}</Text>
+                      <Text style={styles.dropdownOptionText}>All Clubs</Text>
                     </Pressable>
-                  ))}
-                </View>
-              )}
-            </View>
 
-            {canAddEventsForSelectedClub && (
-              <Pressable
-                style={styles.addEventButton}
-                onPress={() =>
-                  router.push({
-                    pathname: "/add-event",
-                    params: {
-                      clubId: selectedClubRef.current,
-                      clubName:
-                        selectedClubRef.current === "all"
-                          ? "All Clubs"
-                          : clubNamesById[selectedClubRef.current] || "Club"
-                    }
-                  })
-                }
-              >
-                <Text style={styles.addEventButtonText}>Add Event</Text>
-              </Pressable>
-            )}
-          </View>
-        </View>
-
-        <View style={styles.syncRow}>
-          <Text style={styles.syncLabel}>Show Phone Calendar Events</Text>
-
-          <View style={styles.syncRightSide}>
-            {isLoadingPhoneEvents ? (
-              <Text style={styles.syncStatus}>Loading...</Text>
-            ) : showPhoneCalendarEvents ? (
-              <Text style={styles.syncStatus}>On</Text>
-            ) : (
-              <Text style={styles.syncStatus}>Off</Text>
-            )}
-
-            <Switch
-              value={showPhoneCalendarEvents}
-              onValueChange={handlePhoneCalendarToggle}
-              trackColor={{ false: "#D1D5DB", true: "#93C5FD" }}
-              thumbColor={showPhoneCalendarEvents ? "#2563EB" : "#F9FAFB"}
-              ios_backgroundColor="#D1D5DB"
-            />
-          </View>
-        </View>
-
-        {combinedListItems.length === 0 ? (
-          <View style={styles.emptyWrap}>
-            <Text style={styles.emptyText}>No upcoming events to show.</Text>
-          </View>
-        ) : (
-          combinedListItems.map(item => {
-            if (item.source === "club") {
-              const clubEvent = item.data;
-              const safeLocation = getSafeLocationText(clubEvent.location);
-              const attendeeCount = clubEvent.attendees?.length ?? 0;
-              const attending = isAttendingEvent(clubEvent);
-              const clubName = clubEvent.clubId
-                ? clubNamesById[clubEvent.clubId] || "Club"
-                : "Club";
-
-              return (
-                <View key={`club-${clubEvent.id}`} style={styles.eventCard}>
-                  <Text style={styles.clubLabel}>{clubName}</Text>
-
-                  <Text style={styles.eventTitle}>{clubEvent.title}</Text>
-
-                  <View style={styles.dateRow}>
-                    <Text style={styles.eventDate}>
-                      {getClubEventDateText(clubEvent.date)}
-                    </Text>
-
-                    <Text style={styles.eventTime}>
-                      {getClubEventTimeRangeText(clubEvent)}
-                    </Text>
-                  </View>
-
-                  {!!safeLocation && (
-                    <Pressable
-                      onPress={() =>
-                        openInMaps(getSafeAddressText(clubEvent.locationAddress))
-                      }
-                    >
-                      <Text style={styles.eventLocation}>{safeLocation}</Text>
-                    </Pressable>
-                  )}
-
-                  <Text style={styles.eventDescription}>
-                    {clubEvent.description}
-                  </Text>
-
-                  <View style={styles.attendanceRow}>
-                    <Pressable
-                      style={styles.checkboxRow}
-                      onPress={() => toggleAttendance(clubEvent)}
-                    >
-                      <View
-                        style={[
-                          styles.checkbox,
-                          attending && styles.checkboxChecked
-                        ]}
+                    {userClubOptions.map(club => (
+                      <Pressable
+                        key={club.id}
+                        style={styles.dropdownOption}
+                        onPress={() => {
+                          setSelectedClubFilter(club.id);
+                          selectedClubRef.current = club.id;
+                          setClubDropdownOpen(false);
+                        }}
                       >
-                        {attending && <Text style={styles.checkmark}>✓</Text>}
-                      </View>
-
-                      <Text style={styles.checkboxLabel}>
-                        {attending ? "You are attending" : "Sign Up"}
-                      </Text>
-                    </Pressable>
-
-                    <Text style={styles.attendeeCount}>
-                      {attendeeCount} attending
-                    </Text>
+                        <Text style={styles.dropdownOptionText}>{club.name}</Text>
+                      </Pressable>
+                    ))}
                   </View>
-
-                  <Pressable onPress={() => openAttendanceList(clubEvent)}>
-                    <Text style={styles.attendanceLink}>
-                      View attendance list
-                    </Text>
-                  </Pressable>
-                </View>
-              );
-            }
-
-            const phoneEvent = item.data;
-
-            return (
-              <View
-                key={`phone-${phoneEvent.id}-${phoneEvent.startDate.toISOString()}`}
-                style={styles.phoneEventCard}
-              >
-                <Text style={styles.phoneLabel}>Phone Calendar</Text>
-
-                <Text style={styles.eventTitle}>{phoneEvent.title}</Text>
-
-                <View style={styles.dateRow}>
-                  <Text style={styles.eventDate}>
-                    {getPhoneEventDateText(phoneEvent)}
-                  </Text>
-
-                  <Text style={styles.eventTime}>
-                    {getPhoneEventTimeRangeText(phoneEvent)}
-                  </Text>
-                </View>
-
-                {!!phoneEvent.location && (
-                  <Text style={styles.phoneLocation}>
-                    {phoneEvent.location}
-                  </Text>
-                )}
-
-                {!!phoneEvent.notes && (
-                  <Text style={styles.eventDescription}>
-                    {phoneEvent.notes}
-                  </Text>
                 )}
               </View>
-            );
-          })
-        )}
-      </ScrollView>
 
-      <Modal
-        visible={attendanceModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setAttendanceModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              {attendanceEvent?.title || "Attendance List"}
-            </Text>
-
-            {!attendanceEvent?.attendees?.length ? (
-              <Text style={styles.emptyAttendanceText}>
-                No one has signed up yet.
-              </Text>
-            ) : (
-              <ScrollView showsVerticalScrollIndicator={false}>
-                {attendanceEvent.attendees.map(item => (
-                  <View key={item.uid} style={styles.attendeeRow}>
-                    <Text style={styles.attendeeName}>{item.name}</Text>
-                    <Text style={styles.attendeePosition}>{item.position}</Text>
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-
-            <Pressable
-              style={styles.closeButton}
-              onPress={() => setAttendanceModalVisible(false)}
-            >
-              <Text style={styles.closeButtonText}>Close</Text>
-            </Pressable>
+              {canAddEventsForSelectedClub && (
+                <Pressable
+                  style={styles.addEventButton}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/add-event",
+                      params: {
+                        clubId: selectedClubRef.current,
+                        clubName:
+                          selectedClubRef.current === "all"
+                            ? "All Clubs"
+                            : clubNamesById[selectedClubRef.current] || "Club"
+                      }
+                    })
+                  }
+                >
+                  <Text style={styles.addEventButtonText}>Add Event</Text>
+                </Pressable>
+              )}
+            </View>
           </View>
-        </View>
-      </Modal>
 
-      <BottomNav />
-    </>
+          <View style={styles.syncRow}>
+            <Text style={styles.syncLabel}>Show Phone Calendar Events</Text>
+
+            <View style={styles.syncRightSide}>
+              {isLoadingPhoneEvents ? (
+                <Text style={styles.syncStatus}>Loading...</Text>
+              ) : showPhoneCalendarEvents ? (
+                <Text style={styles.syncStatus}>On</Text>
+              ) : (
+                <Text style={styles.syncStatus}>Off</Text>
+              )}
+
+              <Switch
+                value={showPhoneCalendarEvents}
+                onValueChange={handlePhoneCalendarToggle}
+                trackColor={{ false: "#D1D5DB", true: "#93C5FD" }}
+                thumbColor={showPhoneCalendarEvents ? "#2563EB" : "#F9FAFB"}
+                ios_backgroundColor="#D1D5DB"
+              />
+            </View>
+          </View>
+
+          {combinedListItems.length === 0 ? (
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyText}>No upcoming events to show.</Text>
+            </View>
+          ) : (
+            combinedListItems.map(item => {
+              const eventKey =
+                item.source === "club"
+                  ? `club-${item.data.id}`
+                  : `phone-${item.data.id}-${item.data.startDate.toISOString()}`;
+
+              const isExpanded = expandedEventIds.includes(eventKey);
+
+              if (item.source === "club") {
+                const clubEvent = item.data;
+                const safeLocation = getSafeLocationText(clubEvent.location);
+                const attendeeCount = clubEvent.attendees?.length ?? 0;
+                const attending = isAttendingEvent(clubEvent);
+                const clubName = clubEvent.clubId
+                  ? clubNamesById[clubEvent.clubId] || "Club"
+                  : "Club";
+
+                return (
+                  <View key={eventKey} style={styles.eventCard}>
+                    <Pressable
+                      style={styles.cardHeaderButton}
+                      onPress={() => toggleExpandedEvent(eventKey)}
+                    >
+                      <View style={styles.cardHeaderTextWrap}>
+                        <Text style={styles.clubLabel}>{clubName}</Text>
+                        <Text style={styles.eventTitle}>{clubEvent.title}</Text>
+                        <View style={styles.dateRow}>
+                          <Text style={styles.eventDate}>
+                            {getClubEventDateText(clubEvent.date)}
+                          </Text>
+
+                          <Text style={styles.eventTime}>
+                            {getClubEventTimeRangeText(clubEvent)}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.collapseArrowWrap}>
+                        <Text style={styles.collapseArrow}>
+                          {isExpanded ? "▲" : "▼"}
+                        </Text>
+                      </View>
+                    </Pressable>
+
+                    {isExpanded && (
+                      <>
+                        {!!safeLocation && (
+                          <Pressable
+                            onPress={() =>
+                              openInMaps(getSafeAddressText(clubEvent.locationAddress))
+                            }
+                          >
+                            <Text style={styles.eventLocation}>{safeLocation}</Text>
+                          </Pressable>
+                        )}
+
+                        {!!clubEvent.description?.trim() && (
+                          <Text style={styles.eventDescription}>
+                            {clubEvent.description}
+                          </Text>
+                        )}
+
+                        <View style={styles.attendanceRow}>
+                          <Pressable
+                            style={styles.checkboxRow}
+                            onPress={() => toggleAttendance(clubEvent)}
+                          >
+                            <View
+                              style={[
+                                styles.checkbox,
+                                attending && styles.checkboxChecked
+                              ]}
+                            >
+                              {attending && <Text style={styles.checkmark}>✓</Text>}
+                            </View>
+
+                            <Text style={styles.checkboxLabel}>
+                              {attending ? "You are attending" : "Sign Up"}
+                            </Text>
+                          </Pressable>
+
+                          <Text style={styles.attendeeCount}>
+                            {attendeeCount} attending
+                          </Text>
+                        </View>
+
+                        <Pressable onPress={() => openAttendanceList(clubEvent)}>
+                          <Text style={styles.attendanceLink}>
+                            View attendance list
+                          </Text>
+                        </Pressable>
+                      </>
+                    )}
+                  </View>
+                );
+              }
+
+              const phoneEvent = item.data;
+
+              return (
+                <View key={eventKey} style={styles.phoneEventCard}>
+                  <Pressable
+                    style={styles.cardHeaderButton}
+                    onPress={() => toggleExpandedEvent(eventKey)}
+                  >
+                    <View style={styles.cardHeaderTextWrap}>
+                      <Text style={styles.phoneLabel}>Phone Calendar</Text>
+                      <Text style={styles.eventTitle}>{phoneEvent.title}</Text>
+                      <View style={styles.dateRow}>
+                        <Text style={styles.eventDate}>
+                          {getPhoneEventDateText(phoneEvent)}
+                        </Text>
+
+                        <Text style={styles.eventTime}>
+                          {getPhoneEventTimeRangeText(phoneEvent)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.collapseArrow}>
+                      {isExpanded ? "▲" : "▼"}
+                    </Text>
+                  </Pressable>
+
+                  {isExpanded && (
+                    <>
+                      {!!phoneEvent.location && (
+                        <Text style={styles.phoneLocation}>
+                          {phoneEvent.location}
+                        </Text>
+                      )}
+
+                      {!!phoneEvent.notes?.trim() && (
+                        <Text style={styles.eventDescription}>
+                          {phoneEvent.notes}
+                        </Text>
+                      )}
+                    </>
+                  )}
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
+
+        <Modal
+          visible={attendanceModalVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setAttendanceModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>
+                {attendanceEvent?.title || "Attendance List"}
+              </Text>
+
+              {!attendanceEvent?.attendees?.length ? (
+                <Text style={styles.emptyAttendanceText}>
+                  No one has signed up yet.
+                </Text>
+              ) : (
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  {attendanceEvent.attendees.map(item => (
+                    <View key={item.uid} style={styles.attendeeRow}>
+                      <Text style={styles.attendeeName}>{item.name}</Text>
+                      <Text style={styles.attendeePosition}>{item.position}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+
+              <Pressable
+                style={styles.closeButton}
+                onPress={() => setAttendanceModalVisible(false)}
+              >
+                <Text style={styles.closeButtonText}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Modal>
+
+        <BottomNav />
+      </>
+    </SafeAreaView>
   );
 }
 
@@ -1015,7 +1040,7 @@ const styles = StyleSheet.create({
   dropdownButtonText: {
     flex: 1,
     color: "#111827",
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "600",
     marginRight: 8
   },
@@ -1100,6 +1125,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#CBD5E1"
   },
+  cardHeaderButton: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between"
+  },
+  cardHeaderTextWrap: {
+    flex: 1,
+    paddingRight: 12
+  },
+  collapseArrowWrap: {
+  width: 32,
+  height: 32,
+  alignItems: "center",
+  justifyContent: "center",
+  marginTop: 2
+},
+
+collapseArrow: {
+  color: "#6B7280",
+  fontSize: 16,
+  fontWeight: "700"
+},
   clubLabel: {
     color: "#7b97d4",
     fontWeight: "700",
@@ -1127,12 +1174,12 @@ const styles = StyleSheet.create({
     color: "#2563EB"
   },
   eventLocation: {
-    marginTop: 4,
+    marginTop: 10,
     color: "#1D4ED8",
     textDecorationLine: "underline"
   },
   phoneLocation: {
-    marginTop: 4,
+    marginTop: 10,
     color: "#475569"
   },
   eventDescription: {
