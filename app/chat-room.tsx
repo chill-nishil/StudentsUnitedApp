@@ -1394,7 +1394,7 @@ function handleMemberLongPress(member: ClubMember) {
               ]}
             >
               <View style={styles.headerTopRow}>
-                <Pressable onPress={() => router.back()} style={styles.backButton}>
+                <Pressable onPress={() => router.push("/chat-dashboard")} style={styles.backButton}>
                   <Text style={styles.backButtonArrow}>‹</Text>
                 </Pressable>
 
@@ -1427,6 +1427,21 @@ function handleMemberLongPress(member: ClubMember) {
                     <Text style={styles.userHeader}>
                       {userName} · {position}
                     </Text>
+
+                    <Pressable
+                      onPress={() =>
+                        router.push({
+                          pathname: "/general-calendar",
+                          params: {
+                            clubId: userClubId || "",
+                            clubName: clubName || "Club",
+                            fromChat: "true"
+                          }
+                        })
+                      }
+                    >
+                      <Text style={styles.viewCalendarText}>View Calendar</Text>
+                    </Pressable>
                   </View>
                 </Pressable>
 
@@ -1451,7 +1466,7 @@ function handleMemberLongPress(member: ClubMember) {
       <SafeAreaView style={styles.safeAreaPlain} edges={["top"]}>
         <View style={styles.container}>
           <View style={styles.headerTopRow}>
-            <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Pressable onPress={() => router.push("/chat-dashboard")} style={styles.backButton}>
               <Text style={styles.backButtonArrow}>‹</Text>
             </Pressable>
 
@@ -1484,6 +1499,21 @@ function handleMemberLongPress(member: ClubMember) {
                 <Text style={styles.userHeader}>
                   {userName} · {position}
                 </Text>
+
+                <Pressable
+                      onPress={() =>
+                        router.push({
+                          pathname: "/general-calendar",
+                          params: {
+                            clubId: userClubId || "",
+                            clubName: clubName || "Club",
+                            fromChat: "true"
+                          }
+                        })
+                      }
+                    >
+                      <Text style={styles.viewCalendarText}>View Calendar</Text>
+                    </Pressable>
               </View>
             </Pressable>
 
@@ -2005,4 +2035,11 @@ safeAreaPlain: {
   flex: 1,
   backgroundColor: "white"
 },
+viewCalendarText: {
+  textAlign: "center",
+  fontSize: 12,
+  fontWeight: "700",
+  color: "#365E95",
+  marginTop: 4
+}
 });

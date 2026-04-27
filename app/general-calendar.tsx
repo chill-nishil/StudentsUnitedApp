@@ -73,7 +73,11 @@ type CombinedListItem =
     };
 
 export default function GeneralCalendarScreen() {
-  const params = useLocalSearchParams<{ clubId?: string; clubName?: string }>();
+const params = useLocalSearchParams<{
+  clubId?: string;
+  clubName?: string;
+  fromChat?: string;
+}>();
 
   const initialClubId =
     typeof params.clubId === "string" && params.clubId.trim()
@@ -771,7 +775,26 @@ export default function GeneralCalendarScreen() {
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.header}>Calendar</Text>
+          <View style={styles.calendarHeaderRow}>
+            {params.fromChat === "true" && (
+              <Pressable
+                style={styles.backButton}
+                onPress={() =>
+                  router.push({
+                    pathname: "/chat-room",
+                    params: {
+                      clubId: initialClubId,
+                      clubName: params.clubName || "Club"
+                    }
+                  })
+                }
+              >
+                <Text style={styles.backButtonArrow}>‹</Text>
+              </Pressable>
+            )}
+
+            <Text style={styles.header}>Calendar</Text>
+          </View>
 
           <Calendar
             markingType="multi-dot"
@@ -1098,12 +1121,12 @@ const styles = StyleSheet.create({
     padding: 18,
     paddingBottom: 120
   },
-  header: {
-    fontSize: 22,
-    fontWeight: "700",
-    textAlign: "center",
-    marginBottom: 10
-  },
+  // header: {
+  //   fontSize: 22,
+  //   fontWeight: "700",
+  //   textAlign: "center",
+  //   marginBottom: 10
+  // },
   listHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -1394,5 +1417,59 @@ const styles = StyleSheet.create({
   closeButtonText: {
     color: "white",
     fontWeight: "600"
-  }
+  },
+//   calendarHeaderRow: {
+//   flexDirection: "row",
+//   alignItems: "center",
+//   justifyContent: "space-between",
+//   marginBottom: 12
+// },
+
+// backButton: {
+//   position: "absolute",
+//   flexDirection: "row",
+//   alignItems: "center",
+//   paddingHorizontal: 6,
+//   borderRadius: 999,
+//   backgroundColor: "#EFF6FF",
+//   borderWidth: 1,
+//   borderColor: "#BFDBFE"  
+// },
+
+backButtonArrow: {
+  fontSize: 28,
+  lineHeight: 28,
+  color: "#365E95",
+  fontWeight: "600"
+},
+
+calendarHeaderRow: {
+  height: 44,
+  justifyContent: "center",
+  alignItems: "center",
+  position: "relative",
+  marginBottom: 10
+},
+
+header: {
+  position: "absolute",
+  left: 0,
+  right: 0,
+  textAlign: "center",
+  fontSize: 28,
+  fontWeight: "800",
+  color: "#111827"
+},
+
+backButton: {
+  position: "absolute",
+  left: 0,
+  zIndex: 2,
+  paddingVertical: 6,
+  paddingHorizontal: 12,
+  borderRadius: 999,
+  backgroundColor: "#EFF6FF",
+  borderWidth: 1,
+  borderColor: "#BFDBFE"
+}
 });
